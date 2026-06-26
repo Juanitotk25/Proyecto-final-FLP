@@ -1,5 +1,6 @@
 #lang eopl
 ;Diego Armando Espinosa Ossa 201942206
+;Juan Manuel Moreno Correa 2417575
 ;******************************************************************************************
 
 ;; ACLARACIONES IMPORTANTES
@@ -68,9 +69,9 @@
   (number
    ("-" digit (arbno digit)) number)
   (number
-    (digit (arbno digit) "." digit (arbno digit) )number)
-   (number
-    ("-" digit (arbno digit) "." digit (arbno digit) )number)
+   (digit (arbno digit) "." digit (arbno digit)) number)
+  (number
+   ("-" digit (arbno digit) "." digit (arbno digit)) number)
    (string
     ("\"" (arbno (not #\")) "\"") string)
    ))
