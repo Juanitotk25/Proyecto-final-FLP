@@ -363,7 +363,9 @@
 
 (define save-sen
   (lambda (sen env)
-    (cases sentence (car sen)
+    (if (null? sen)
+        env
+        (cases sentence (car sen)
 
       (define-var (id rhs ids rhss)
         (let ((new-env
@@ -406,7 +408,7 @@
                (func-closure params body-exps return-exp new-env))))
           (if (null? (cdr sen))
               new-env
-              (save-sen (cdr sen) new-env)))))))
+              (save-sen (cdr sen) new-env)))))))))
 
 (define make-list-of-n-smthing
   (lambda(n smthing)
