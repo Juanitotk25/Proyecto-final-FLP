@@ -81,6 +81,7 @@
 (define grammar-simple-interpreter
   '((program (main-exp) a-program)
     (expression (number) numero)
+    (expression (string) cadena-exp)
     (expression (identifier call-or-var) var-or-call-exp)
     (call-or-var ("(" (separated-list expression ",") ")") call-suffix)
     (call-or-var () var-suffix)
@@ -224,6 +225,7 @@
   (lambda (exp env)
     (cases expression exp
       (numero (datum) datum)
+      (cadena-exp (s) (substring s 1 (- (string-length s) 1)))
       (var-or-call-exp (id suffix)
                        (cases call-or-var suffix
                          (var-suffix ()
