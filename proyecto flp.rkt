@@ -95,6 +95,11 @@
      (primitivaLista "(" (separated-list expression ",") ")")
      listapp-exp)
     (expression ("[" (separated-list expression ",") "]") list-literal-exp)
+    (expression
+     (primitivaDicc "(" (separated-list expression ",") ")")
+     dictapp-exp)
+    (expression ("dict" "(" (separated-list dict-pair ",") ")") dict-literal-exp)
+    (dict-pair (identifier "=>" expression) a-dict-pair)
     (expression ("if" expression "then" expression "else" expression)
                 if-exp)
     (expression (exp-bool) bool-exp)
@@ -142,7 +147,13 @@
     (primitivaLista ("cola") cola-prim)
     (primitivaLista ("append") append-prim)
     (primitivaLista ("ref-list") ref-list-prim)
-    (primitivaLista ("set-list") set-list-prim)))
+    (primitivaLista ("set-list") set-list-prim)
+    (primitivaDicc ("diccionario?") diccionario?-prim)
+    (primitivaDicc ("crear-diccionario") crear-diccionario-prim)
+    (primitivaDicc ("ref-diccionario") ref-diccionario-prim)
+    (primitivaDicc ("set-diccionario") set-diccionario-prim)
+    (primitivaDicc ("claves") claves-prim)
+    (primitivaDicc ("valores") valores-prim)))
 
 ;Tipos de datos para la sintaxis abstracta de la gramática
 
@@ -260,6 +271,7 @@
                      (display (cond
                                 ((procval? val) "<funcion>")
                                 ((mutable-list? val) (mutable-list->string val))
+                                ((mutable-dict? val) (mutable-dict->string val))
                                 (else val)))
                      '<--)))
       (if-exp (test-exp true-exp false-exp)
@@ -273,6 +285,13 @@
                      (apply-list-primitive prim args)))
       (list-literal-exp (exps)
                         (make-mutable-list (map (lambda (e) (eval-expression e env)) exps)))
+      (dictapp-exp (prim rands)
+                   (let ((args (eval-primapp-exp-rands rands env)))
+                     (apply-dict-primitive prim args)))
+      (dict-literal-exp (pairs)
+                        (let ((keys (map (lambda (p) (cases dict-pair p (a-dict-pair (key val) key))) pairs))
+                              (vals (map (lambda (p) (cases dict-pair p (a-dict-pair (key val) (eval-expression val env)))) pairs)))
+                          (make-mutable-dict keys vals)))
 
 
       (letrec-exp (proc-names idss bodies letrec-body)
@@ -584,6 +603,7 @@
       ((string? v) v)
       ((procval? v) "<funcion>")
       ((mutable-list? v) (mutable-list->string v))
+      ((mutable-dict? v) (mutable-dict->string v))
       (else (symbol->string (car v))))))
 
 ;; Convierte una lista mutable a string para impresión
@@ -605,6 +625,131 @@
                (loop (+ i 1)
                      (cons (expval->string (vector-ref vec i)) strs))))
          "]")))))
+
+;;*******************************************************************************************
+;; Diccionarios Mutables
+;; Implementados como vector de un solo elemento que apunta al vector de pares (clave . valor)
+;; Esto permite redimensionar el vector interno al agregar nuevas claves
+
+(define-datatype mutable-dict mutable-dict?
+  (a-mutable-dict (box vector?)))  ; box es un vector de 1 elemento: #(vec-de-pares)
+
+;; Crea un diccionario mutable a partir de listas de claves y valores
+;; Las claves se almacenan como strings internamente
+(define make-mutable-dict
+  (lambda (keys vals)
+    (a-mutable-dict (vector (list->vector (map cons (map symbol->string keys) vals))))))
+
+;; Crea un diccionario vacío
+(define the-empty-dict
+  (a-mutable-dict (vector (vector))))
+
+;; Busca el índice de una clave en el vector de pares
+(define dict-find-key-index
+  (lambda (pairs-vec key n)
+    (cond
+      ((>= n (vector-length pairs-vec)) #f)
+      ((equal? (car (vector-ref pairs-vec n)) key) n)
+      (else (dict-find-key-index pairs-vec key (+ n 1))))))
+
+;; Referencia: obtiene el valor asociado a una clave
+(define mutable-dict-ref
+  (lambda (dict key)
+    (cases mutable-dict dict
+      (a-mutable-dict (box)
+        (let ((pairs-vec (vector-ref box 0)))
+          (let ((idx (dict-find-key-index pairs-vec key 0)))
+            (if idx
+                (cdr (vector-ref pairs-vec idx))
+                (eopl:error 'ref-diccionario "Clave no encontrada: ~s" key))))))))
+
+;; Asignación: establece el valor de una clave (o la agrega si no existe)
+(define mutable-dict-set!
+  (lambda (dict key val)
+    (cases mutable-dict dict
+      (a-mutable-dict (box)
+        (let ((pairs-vec (vector-ref box 0)))
+          (let ((idx (dict-find-key-index pairs-vec key 0)))
+            (if idx
+                (begin
+                  (vector-set! pairs-vec idx (cons key val))
+                  'ok)
+                ;; Clave no existe: crear nuevo vector más grande y reemplazar
+                (let ((new-vec (make-vector (+ (vector-length pairs-vec) 1))))
+                  (begin
+                    (let loop ((i 0))
+                      (when (< i (vector-length pairs-vec))
+                        (vector-set! new-vec i (vector-ref pairs-vec i))
+                        (loop (+ i 1))))
+                    (vector-set! new-vec (vector-length pairs-vec) (cons key val))
+                    (vector-set! box 0 new-vec)
+                    'ok)))))))))
+
+;; Obtener claves como lista mutable
+(define mutable-dict-keys
+  (lambda (dict)
+    (cases mutable-dict dict
+      (a-mutable-dict (box)
+        (let ((pairs-vec (vector-ref box 0)))
+          (let ((len (vector-length pairs-vec)))
+            (let ((new-vec (make-vector len)))
+              (begin
+                (let loop ((i 0))
+                  (when (< i len)
+                    (vector-set! new-vec i (car (vector-ref pairs-vec i)))
+                    (loop (+ i 1))))
+                (a-mutable-list new-vec)))))))))
+
+;; Obtener valores como lista mutable
+(define mutable-dict-vals
+  (lambda (dict)
+    (cases mutable-dict dict
+      (a-mutable-dict (box)
+        (let ((pairs-vec (vector-ref box 0)))
+          (let ((len (vector-length pairs-vec)))
+            (let ((new-vec (make-vector len)))
+              (begin
+                (let loop ((i 0))
+                  (when (< i len)
+                    (vector-set! new-vec i (cdr (vector-ref pairs-vec i)))
+                    (loop (+ i 1))))
+                (a-mutable-list new-vec)))))))))
+
+;; Convierte un diccionario mutable a string para impresión
+(define mutable-dict->string
+  (lambda (dict)
+    (cases mutable-dict dict
+      (a-mutable-dict (box)
+        (let ((pairs-vec (vector-ref box 0)))
+          (string-append
+           "{"
+           (let loop ((i 0) (strs '()))
+             (if (>= i (vector-length pairs-vec))
+                 (apply string-append
+                        (let intersperse ((lst (reverse strs)) (first #t))
+                          (if (null? lst)
+                              '()
+                              (if first
+                                  (cons (car lst) (intersperse (cdr lst) #f))
+                                  (cons ", " (cons (car lst) (intersperse (cdr lst) #f)))))))
+                 (loop (+ i 1)
+                       (cons (string-append
+                              (car (vector-ref pairs-vec i))
+                              ": "
+                              (expval->string (cdr (vector-ref pairs-vec i))))
+                             strs))))
+           "}"))))))
+
+;; apply-dict-primitive: aplica una primitiva de diccionario
+(define apply-dict-primitive
+  (lambda (prim args)
+    (cases primitivaDicc prim
+      (diccionario?-prim () (mutable-dict? (car args)))
+      (crear-diccionario-prim () the-empty-dict)
+      (ref-diccionario-prim () (mutable-dict-ref (car args) (cadr args)))
+      (set-diccionario-prim () (mutable-dict-set! (car args) (cadr args) (caddr args)))
+      (claves-prim () (mutable-dict-keys (car args)))
+      (valores-prim () (mutable-dict-vals (car args))))))
 
 ;; apply-procedure: evalua el cuerpo de un procedimiento en el ambiente extendido correspondiente
 ;; proc: closure o func-closure
@@ -728,7 +873,7 @@
 ;; Incluye: números, booleanos, strings, procedimientos (closures)
 (define expval?
   (lambda (x)
-    (or (number? x) (boolean? x) (string? x) (procval? x) (mutable-list? x))))
+    (or (number? x) (boolean? x) (string? x) (procval? x) (mutable-list? x) (mutable-dict? x))))
 
 (define ref-to-direct-target?
   (lambda (x)
