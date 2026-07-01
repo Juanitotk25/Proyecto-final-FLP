@@ -1,6 +1,7 @@
 #lang eopl
-;Diego Armando Espinosa Ossa 201942206
-Juan David Lopez Vanegas 
+#| Diego Armando Espinosa Ossa 201942206
+  Juan David Lopez Vanegas
+|#
 ;******************************************************************************************
 
 ;; ACLARACIONES IMPORTANTES
@@ -81,13 +82,12 @@ Juan David Lopez Vanegas
 (define grammar-simple-interpreter
   '((program (main-exp) a-program)
     (expression (number) numero)
+    (expression ("call" identifier "(" (separated-list expression ",") ")") math-app-exp)
     (expression (identifier) variable)
     (expression ("set" identifier "=" expression)
             assign-exp)
     (expression ("print" expression) print-exp)
     (expression (text) texto-exp)
-    (expression ("true") true-exp)
-    (expression ("false") false-exp)
     (expression ("null") null-exp)
     (expression (exp-bool) bool-oper-exp)
     (expression
@@ -99,8 +99,7 @@ Juan David Lopez Vanegas
                 switch-exp)
     (expression ("proc" "(" (arbno identifier) ")" expression)
                 proc-exp)
-    (expression (identifier "(" (separated-list expression ",") ")")
-                math-app-exp)
+    
     (expression ("--func-body--" (arbno expression) "return" expression)
                 func-body-exp)
     (expression ("while" expression "do" expression "done")
@@ -119,8 +118,7 @@ Juan David Lopez Vanegas
                 const)
     (sentence ("func" identifier "(" (separated-list identifier ",") ")" "{" (arbno expression) "return" expression "}")
                 func-sentence)
-    (sentence ("func" identifier "(" (separated-list identifier ",") ")" "{" (arbno expression) "}")
-                func-no-ret-sentence)
+    
     
     (bool ( "true"  )true-val)
     (bool ( "false" )false-val)
@@ -307,8 +305,7 @@ Juan David Lopez Vanegas
                                    (extend-env-recursively proc-names idss bodies env)))
       (texto-exp (txt)
                  (substring txt 1 (- (string-length txt) 1)))
-      (true-exp () #t)
-      (false-exp () #f)
+      
       (null-exp () 'null-val)
       (bool-oper-exp (expB) (eval-exp-bool expB env))
       )
@@ -408,11 +405,7 @@ Juan David Lopez Vanegas
               new-env
               (save-sen (cdr sen) new-env))))
               
-      (func-no-ret-sentence (id ids body-exps)
-        (let ((new-env (extend-env-recursively (list id) (list ids) (list (func-body-exp body-exps (null-exp))) env)))
-          (if (null? (cdr sen))
-              new-env
-              (save-sen (cdr sen) new-env))))
+      
       )))
 
 (define make-list-of-n-smthing
