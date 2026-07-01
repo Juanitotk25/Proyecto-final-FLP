@@ -91,7 +91,7 @@ Juan David Lopez Vanegas
     (expression ("null") null-exp)
     (expression (exp-bool) bool-oper-exp)
     (expression
-     (primitivaArit "("expression")")
+     (primitivaArit "(" (separated-list expression ",") ")")
      primapp-exp)
     (expression ("if" expression "then" expression "else" expression "end")
                 if-exp)
@@ -99,6 +99,10 @@ Juan David Lopez Vanegas
                 switch-exp)
     (expression ("proc" "(" (arbno identifier) ")" expression)
                 proc-exp)
+    (expression (identifier "(" (separated-list expression ",") ")")
+                math-app-exp)
+    (expression ("--func-body--" (arbno expression) "return" expression)
+                func-body-exp)
     (expression ("while" expression "do" expression "done")
                 while-exp)
     (expression ("for" identifier "in" expression "do" expression "done")
@@ -113,6 +117,10 @@ Juan David Lopez Vanegas
                 define-var)
     (sentence ("const" identifier "=" expression (arbno ";" identifier "=" expression))
                 const)
+    (sentence ("func" identifier "(" (separated-list identifier ",") ")" "{" (arbno expression) "return" expression "}")
+                func-sentence)
+    (sentence ("func" identifier "(" (separated-list identifier ",") ")" "{" (arbno expression) "}")
+                func-no-ret-sentence)
     
     (bool ( "true"  )true-val)
     (bool ( "false" )false-val)
@@ -273,6 +281,13 @@ Juan David Lopez Vanegas
                      (eopl:error 'eval-expression "El iterador de for debe ser una lista, se obtuvo: ~s" val))))
       (proc-exp (ids body)
                 (closure ids body env))
+      (math-app-exp (id rands)
+               (let ((proc (eval-expression (variable id) env))
+                     (args (eval-rands rands env)))
+                 (if (procval? proc)
+                     (apply-procedure proc args)
+                     (eopl:error 'eval-expression
+                                 "Attempt to apply non-procedure ~s" proc))))
       (app-exp (rator rands)
                (let ((proc (eval-expression rator env))
                      (args (eval-rands rands env)))
@@ -280,6 +295,13 @@ Juan David Lopez Vanegas
                      (apply-procedure proc args)
                      (eopl:error 'eval-expression
                                  "Attempt to apply non-procedure ~s" proc))))
+      (func-body-exp (body-exps ret-exp)
+                     (let loop ((exps body-exps))
+                       (if (null? exps)
+                           (eval-expression ret-exp env)
+                           (begin
+                             (eval-expression (car exps) env)
+                             (loop (cdr exps))))))
       (letrec-exp (proc-names idss bodies letrec-body)
                   (eval-expression letrec-body
                                    (extend-env-recursively proc-names idss bodies env)))
@@ -378,7 +400,20 @@ Juan David Lopez Vanegas
                 env)))
           (if (null? (cdr sen))
               new-env
-              (save-sen (cdr sen) new-env)))))))
+              (save-sen (cdr sen) new-env))))
+      
+      (func-sentence (id ids body-exps ret-exp)
+        (let ((new-env (extend-env-recursively (list id) (list ids) (list (func-body-exp body-exps ret-exp)) env)))
+          (if (null? (cdr sen))
+              new-env
+              (save-sen (cdr sen) new-env))))
+              
+      (func-no-ret-sentence (id ids body-exps)
+        (let ((new-env (extend-env-recursively (list id) (list ids) (list (func-body-exp body-exps (null-exp))) env)))
+          (if (null? (cdr sen))
+              new-env
+              (save-sen (cdr sen) new-env))))
+      )))
 
 (define make-list-of-n-smthing
   (lambda(n smthing)
@@ -516,7 +551,7 @@ Juan David Lopez Vanegas
   (lambda (proc-names idss bodies old-env)
     (let ((len (length proc-names)))
       (let ((vec (make-vector len)))
-        (let ((env (extended-env-record proc-names vec old-env)))
+        (let ((env (extended-env-record proc-names vec (make-list-of-n-smthing len 'var) old-env)))
           (for-each
             (lambda (pos ids body)
               (vector-set! vec pos (direct-target (closure ids body env))))
@@ -681,3 +716,14 @@ Juan David Lopez Vanegas
 
 ;; --- For ---
 ;; (scan&parse "$ var x = 0 for i in x do print i done") ; Dará error porque x no es una lista aún.
+
+;; ========== Ejemplos Paso 5: Funciones y Recursión ==========
+
+;; --- Función simple con retorno ---
+;; (scan&parse "$ func sumar(a, b) { return +(a, b) } print sumar(5, 10) end")
+
+;; --- Función sin retorno (devuelve null) ---
+;; (scan&parse "$ func saludar(nombre) { print nombre } print saludar(\"Juan\") end")
+
+;; --- Recursión ---
+;; (scan&parse "$ func factorial(n) { if <=(n, 1) then return 1 else return *(n, factorial(-(n, 1))) end } print factorial(5) end")
