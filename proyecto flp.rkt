@@ -99,6 +99,10 @@ Juan David Lopez Vanegas
                 switch-exp)
     (expression ("proc" "(" (arbno identifier) ")" expression)
                 proc-exp)
+    (expression ("while" expression "do" expression "done")
+                while-exp)
+    (expression ("for" identifier "in" expression "do" expression "done")
+                for-exp)
     (expression ( "(" expression (arbno expression) ")")
                 app-exp)
     (expression ("letrec" (arbno identifier "(" (separated-list identifier ",") ")" "=" expression)  "in" expression) 
@@ -249,6 +253,24 @@ Juan David Lopez Vanegas
                           (if (equal? val (eval-expression (car cases) env))
                               (eval-expression (car bodies) env)
                               (loop (cdr cases) (cdr bodies)))))))
+      (while-exp (test-exp body-exp)
+                 (let loop ()
+                   (if (true-value? (eval-expression test-exp env))
+                       (begin
+                         (eval-expression body-exp env)
+                         (loop))
+                       'ok)))
+      (for-exp (id iterable body-exp)
+               (let ((val (eval-expression iterable env)))
+                 ;; NOTA: Por ahora asume listas de Racket, se ajustará en el Paso 6 (Listas)
+                 (if (list? val) 
+                     (let loop ((lst val))
+                       (if (null? lst)
+                           'ok
+                           (begin
+                             (eval-expression body-exp (extend-env (list id) (list (car lst)) (list 'var) env))
+                             (loop (cdr lst)))))
+                     (eopl:error 'eval-expression "El iterador de for debe ser una lista, se obtuvo: ~s" val))))
       (proc-exp (ids body)
                 (closure ids body env))
       (app-exp (rator rands)
@@ -651,3 +673,11 @@ Juan David Lopez Vanegas
 
 ;; --- Switch ---
 ;; (scan&parse "$ var color = \"verde\" switch color { case \"rojo\": print \"Detente\" case \"verde\": print \"Sigue\" default: print \"Desconocido\" } end")
+
+;; ========== Ejemplos Paso 4: Ciclos Iterativos ==========
+
+;; --- While ---
+;; (scan&parse "$ var x = 0 while <(x, 3) do begin print x; set x = +(x, 1) end done")
+
+;; --- For ---
+;; (scan&parse "$ var x = 0 for i in x do print i done") ; Dará error porque x no es una lista aún.
