@@ -93,8 +93,10 @@ Juan David Lopez Vanegas
     (expression
      (primitivaArit "("expression")")
      primapp-exp)
-    (expression ("if" expression "then" expression "else" expression)
+    (expression ("if" expression "then" expression "else" expression "end")
                 if-exp)
+    (expression ("switch" expression "{" (arbno "case" expression ":" expression) "default" ":" expression "}")
+                switch-exp)
     (expression ("proc" "(" (arbno identifier) ")" expression)
                 proc-exp)
     (expression ( "(" expression (arbno expression) ")")
@@ -238,6 +240,15 @@ Juan David Lopez Vanegas
               (if (true-value? (eval-expression test-exp env))
                   (eval-expression true-exp env)
                   (eval-expression false-exp env)))
+      (switch-exp (test-exp cases-exps bodies-exps default-exp)
+                  (let ((val (eval-expression test-exp env)))
+                    (let loop ((cases cases-exps)
+                               (bodies bodies-exps))
+                      (if (null? cases)
+                          (eval-expression default-exp env)
+                          (if (equal? val (eval-expression (car cases) env))
+                              (eval-expression (car bodies) env)
+                              (loop (cdr cases) (cdr bodies)))))))
       (proc-exp (ids body)
                 (closure ids body env))
       (app-exp (rator rands)
@@ -631,4 +642,12 @@ Juan David Lopez Vanegas
 ;; (scan&parse "$ var a = not(==(3,3)) print a end")
 
 ;; --- Uso en condicionales ---
-;; (scan&parse "$ var x = 10; y = 20 if <(x, y) then print \"Menor\" else print \"Mayor\" end")
+;; (scan&parse "$ var x = 10; y = 20 if <(x, y) then print \"Menor\" else print \"Mayor\" end end")
+
+;; ========== Ejemplos Paso 3: Condicionales y Switch ==========
+
+;; --- Condicional IF con end ---
+;; (scan&parse "$ var edad = 20 if >=(edad, 18) then print \"Mayor\" else print \"Menor\" end end")
+
+;; --- Switch ---
+;; (scan&parse "$ var color = \"verde\" switch color { case \"rojo\": print \"Detente\" case \"verde\": print \"Sigue\" default: print \"Desconocido\" } end")
