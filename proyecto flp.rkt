@@ -1,6 +1,7 @@
 #lang eopl
 ;Diego Armando Espinosa Ossa 201942206
 ;Juan Manuel Moreno Correa 2417575
+;Juan David Lopez Vanegas
 ;******************************************************************************************
 
 ;; ACLARACIONES IMPORTANTES
@@ -63,7 +64,7 @@
   (comment
    ("#" (arbno (not #\newline))) skip)
   (identifier
-   (letter (arbno (or letter digit "?" "-"))) symbol)
+   (letter (arbno (or letter digit ))) symbol)
   (number
    (digit (arbno digit)) number)
   (number
@@ -72,7 +73,7 @@
    (digit (arbno digit) "." digit (arbno digit)) number)
   (number
    ("-" digit (arbno digit) "." digit (arbno digit)) number)
-   (string
+    (string
     ("\"" (arbno (not #\")) "\"") string)
    ))
 
@@ -88,6 +89,10 @@
     (expression ("set" identifier "=" expression)
             assign-exp)
     (expression ("print" expression) print-exp)
+    (expression ("true") true-exp)
+    (expression ("false") false-exp)
+    (expression ("null") null-exp)
+    (expression (exp-bool) bool-oper-exp)
     (expression
      (primitivaArit "(" (separated-list expression ",") ")")
      primapp-exp)
@@ -100,12 +105,22 @@
      dictapp-exp)
     (expression ("dict" "(" (separated-list dict-pair ",") ")") dict-literal-exp)
     (dict-pair (identifier "=>" expression) a-dict-pair)
-    (expression ("if" expression "then" expression "else" expression)
+    (expression ("if" expression "then" expression "else" expression "end")
                 if-exp)
-    (expression (exp-bool) bool-exp)
-
-
-
+    (expression ("switch" expression "{" (arbno "case" expression ":" expression) "default" ":" expression "}")
+                switch-exp)
+    (expression ("proc" "(" (arbno identifier) ")" expression)
+                proc-exp)
+    (expression (identifier "(" (separated-list expression ",") ")")
+                math-app-exp)
+    (expression ("--func-body--" (arbno expression) "return" expression)
+                func-body-exp)
+    (expression ("while" expression "do" expression "done")
+                while-exp)
+    (expression ("for" identifier "in" expression "do" expression "done")
+                for-exp)
+    (expression ( "(" expression (arbno expression) ")")
+                app-exp)
     (expression ("letrec" (arbno identifier "(" (separated-list identifier ",") ")" "=" expression)  "in" expression) 
                 letrec-exp)
     (main-exp ("$" (arbno sentence) expression (arbno ";" expression) "end")
@@ -114,8 +129,10 @@
                 define-var)
     (sentence ("const" identifier "=" expression (arbno ";" identifier "=" expression))
                 const)
-    (sentence ("func" identifier "(" (separated-list identifier ",") ")" "{" (arbno expression ";") "return" expression "}")
-                func-decl)
+    (sentence ("func" identifier "(" (separated-list identifier ",") ")" "{" (arbno expression) "return" expression "}")
+                func-sentence)
+    (sentence ("func" identifier "(" (separated-list identifier ",") ")" "{" (arbno expression) "}")
+                func-no-ret-sentence)
     
     (bool ( "true"  )true-val)
     (bool ( "false" )false-val)
@@ -153,7 +170,7 @@
     (primitivaDicc ("ref-diccionario") ref-diccionario-prim)
     (primitivaDicc ("set-diccionario") set-diccionario-prim)
     (primitivaDicc ("claves") claves-prim)
-    (primitivaDicc ("valores") valores-prim)))
+    (primitivaDicc ("valores") valores-prim))
 
 ;Tipos de datos para la sintaxis abstracta de la gramática
 
@@ -292,36 +309,89 @@
                         (let ((keys (map (lambda (p) (cases dict-pair p (a-dict-pair (key val) key))) pairs))
                               (vals (map (lambda (p) (cases dict-pair p (a-dict-pair (key val) (eval-expression val env)))) pairs)))
                           (make-mutable-dict keys vals)))
-
-
+      (switch-exp (test-exp cases-exps bodies-exps default-exp)
+                  (let ((val (eval-expression test-exp env)))
+                    (let loop ((cases cases-exps)
+                               (bodies bodies-exps))
+                      (if (null? cases)
+                          (eval-expression default-exp env)
+                          (if (equal? val (eval-expression (car cases) env))
+                              (eval-expression (car bodies) env)
+                              (loop (cdr cases) (cdr bodies)))))))
+      (while-exp (test-exp body-exp)
+                 (let loop ()
+                   (if (true-value? (eval-expression test-exp env))
+                       (begin
+                         (eval-expression body-exp env)
+                         (loop))
+                       'ok)))
+      (for-exp (id iterable body-exp)
+               (let ((val (eval-expression iterable env)))
+                 (if (mutable-list? val)
+                     (let loop ((lst (mutable-list->racket-list val)))
+                       (if (null? lst)
+                           'ok
+                           (begin
+                             (eval-expression body-exp (extend-env (list id) (list (car lst)) (list 'var) env))
+                             (loop (cdr lst)))))
+                     (eopl:error 'eval-expression "El iterador de for debe ser una lista, se obtuvo: ~s" val))))
+      (proc-exp (ids body)
+                (closure ids body env))
+      (math-app-exp (id rands)
+               (let ((proc (let ((ref (apply-env-ref env id)))
+                             (deref ref)))
+                     (args (eval-rands rands env)))
+                 (if (procval? proc)
+                     (apply-procedure proc args)
+                     (eopl:error 'eval-expression
+                                 "Attempt to apply non-procedure ~s" proc))))
+      (app-exp (rator rands)
+               (let ((proc (eval-expression rator env))
+                     (args (eval-rands rands env)))
+                 (if (procval? proc)
+                     (apply-procedure proc args)
+                     (eopl:error 'eval-expression
+                                 "Attempt to apply non-procedure ~s" proc))))
+      (func-body-exp (body-exps ret-exp)
+                     (let loop ((exps body-exps))
+                       (if (null? exps)
+                           (eval-expression ret-exp env)
+                           (begin
+                             (eval-expression (car exps) env)
+                             (loop (cdr exps))))))
       (letrec-exp (proc-names idss bodies letrec-body)
                   (eval-expression letrec-body
                                    (extend-env-recursively proc-names idss bodies env)))
-
+      (texto-exp (txt)
+                 (substring txt 1 (- (string-length txt) 1)))
+      (true-exp () #t)
+      (false-exp () #f)
+      (null-exp () 'null-val)
+      (bool-oper-exp (expB) (eval-exp-bool expB env))
       )
     ))
 
-;; eval-exp-bool: <exp-bool> <env> -> boolean
-;; Evalúa expresiones booleanas
+;eval-exp-bool: <exp-bool> <enviroment> -> boolean
 (define eval-exp-bool
-  (lambda (exp env)
-    (cases exp-bool exp
+  (lambda (expB env)
+    (cases exp-bool expB
       (pred-prim-exp (prim exp1 exp2)
-                     (let ((val1 (eval-expression exp1 env))
-                           (val2 (eval-expression exp2 env)))
-                       (apply-pred-prim prim val1 val2)))
-      (valor-verdad (bool-val)
-                    (cases bool bool-val
-                      (true-val () #t)
-                      (false-val () #f)))
-      (oper-bin-bool-exp (prim exp1 exp2)
-                         (let ((val1 (eval-exp-bool exp1 env))
-                               (val2 (eval-exp-bool exp2 env)))
-                           (apply-oper-bin-bool prim val1 val2)))
-      (oper-un-bool-exp (prim exp1)
-                        (let ((val1 (eval-exp-bool exp1 env)))
-                          (apply-oper-un-bool prim val1))))))
+        (let ((val1 (eval-expression exp1 env))
+              (val2 (eval-expression exp2 env)))
+          (apply-pred-prim prim val1 val2)))
+      (valor-verdad (b)
+        (cases bool b
+          (true-val () #t)
+          (false-val () #f)))
+      (oper-bin-bool-exp (oper expB1 expB2)
+        (let ((val1 (eval-exp-bool expB1 env))
+              (val2 (eval-exp-bool expB2 env)))
+          (apply-oper-bin-bool oper val1 val2)))
+      (oper-un-bool-exp (oper expB1)
+        (let ((val1 (eval-exp-bool expB1 env)))
+          (apply-oper-un-bool oper val1))))))
 
+;apply-pred-prim: <pred-prim> <val> <val> -> boolean
 (define apply-pred-prim
   (lambda (prim val1 val2)
     (cases pred-prim prim
@@ -329,19 +399,21 @@
       (mayor () (> val1 val2))
       (menorIgual () (<= val1 val2))
       (mayorIgual () (>= val1 val2))
-      (igual () (= val1 val2))
-      (diferente () (not (= val1 val2))))))
+      (igual () (equal? val1 val2))
+      (diferente () (not (equal? val1 val2))))))
 
+;apply-oper-bin-bool: <oper-bin-bool> <val> <val> -> boolean
 (define apply-oper-bin-bool
-  (lambda (prim val1 val2)
-    (cases oper-bin-bool prim
+  (lambda (oper val1 val2)
+    (cases oper-bin-bool oper
       (and-exp () (and val1 val2))
       (or-exp () (or val1 val2)))))
 
+;apply-oper-un-bool: <oper-un-bool> <val> -> boolean
 (define apply-oper-un-bool
-  (lambda (prim val1)
-    (cases oper-un-bool prim
-      (negacion () (not val1)))))
+  (lambda (oper val)
+    (cases oper-un-bool oper
+      (negacion () (not val)))))
 
 ;  $ var asa = 123; x = 345; y = 567 print asa end;
 (define main
@@ -388,27 +460,19 @@
           (if (null? (cdr sen))
               new-env
               (save-sen (cdr sen) new-env))))
-
-      (func-decl (name params body-exps return-exp)
-        ;; Crear un func-closure para la función y registrarla en el ambiente
-        ;; con soporte de recursión: la función puede verse a sí misma
-        ;; Se usa extend-env-recursively para que el nombre de la función
-        ;; esté disponible en su propio ambiente
-        (let ((new-env
-               (extend-env-recursively
-                (list name)
-                (list params)
-                (list return-exp)
-                env)))
-          ;; Actualizar el closure en el ambiente para que sea func-closure
-          ;; con body-exps y el ambiente recursivo correcto
-          (let ((ref (apply-env-ref new-env name)))
-            (primitive-setref! ref
-              (direct-target
-               (func-closure params body-exps return-exp new-env))))
+      
+      (func-sentence (id ids body-exps ret-exp)
+        (let ((new-env (extend-env-recursively (list id) (list ids) (list (func-body-exp body-exps ret-exp)) env)))
           (if (null? (cdr sen))
               new-env
-              (save-sen (cdr sen) new-env)))))))))
+              (save-sen (cdr sen) new-env))))
+              
+      (func-no-ret-sentence (id ids body-exps)
+        (let ((new-env (extend-env-recursively (list id) (list ids) (list (func-body-exp body-exps (null-exp))) env)))
+          (if (null? (cdr sen))
+              new-env
+              (save-sen (cdr sen) new-env))))
+      )))
 
 (define make-list-of-n-smthing
   (lambda(n smthing)
@@ -437,13 +501,7 @@
                                           (direct-target (expval) ref)
                                           (indirect-target (ref1) ref1)))))
                          (call-suffix (rands)
-                                      (direct-target (let ((proc (let ((ref (apply-env-ref env id)))
-                                                                    (deref ref)))
-                                                            (args (eval-rands rands env)))
-                                                        (if (procval? proc)
-                                                            (apply-procedure proc args)
-                                                            (eopl:error 'eval-expression
-                                                                        "Attempt to apply non-procedure ~s" proc)))))))
+                                      (direct-target (eval-expression rand env))))
       (else
        (direct-target (eval-expression rand env))))))
 
@@ -470,44 +528,32 @@
       (incr-prim () (+ (car args) 1))
       (decr-prim () (- (car args) 1)))))
 
-;; apply-list-primitive: <primitivaLista> <list-of-values> -> value
-;; Aplica una primitiva de listas a los argumentos dados
-(define apply-list-primitive
-  (lambda (prim args)
-    (cases primitivaLista prim
-      (vacio?-prim () (mutable-list-empty? (car args)))
-      (vacio-prim () the-empty-list)
-      (crear-lista-prim () (make-mutable-list args))
-      (lista?-prim () (mutable-list? (car args)))
-      (cabeza-prim () (mutable-list-head (car args)))
-      (cola-prim () (mutable-list-tail (car args)))
-      (append-prim () (mutable-list-append (car args) (cadr args)))
-      (ref-list-prim () (mutable-list-ref (car args) (cadr args)))
-      (set-list-prim () (mutable-list-set! (car args) (cadr args) (caddr args))))))
+;mathflow-display: muestra valores de MathFlow en formato adecuado
+(define mathflow-display
+  (lambda (val)
+    (cond
+      ((boolean? val) (display (if val "true" "false")))
+      ((eqv? val 'null-val) (display "null"))
+      (else (display val)))))
 
-;; true-value?: determina si un valor dado corresponde a un valor booleano falso o verdadero
-;; Acepta: #t/#f (booleanos Racket), 0 (falso), cualquier otro número (verdadero)
+;true-value?: determina si un valor dado corresponde a un valor booleano falso o verdadero
+; Semantica dinamica: false, 0, "", null son falsos. Todo lo demas es verdadero.
 (define true-value?
   (lambda (x)
     (cond
       ((boolean? x) x)
       ((number? x) (not (zero? x)))
-      (else #f))))
+      ((string? x) (not (string=? x "")))
+      ((eqv? x 'null-val) #f)
+      (else #t))))
 
-;; procval: tipo de dato para valores de procedimiento
-;; closure: procedimiento simple (proc) con ids, body y env
-;; func-closure: procedimiento declarado con func, con body-exps (secuencia) y return-exp
+;*******************************************************************************************
+;Procedimientos
 (define-datatype procval procval?
   (closure
    (ids (list-of symbol?))
    (body expression?)
-   (env environment?))
-  (func-closure
-   (ids (list-of symbol?))
-   (body-exps (list-of expression?))
-   (return-exp expression?)
    (env environment?)))
-
 ;; mutable-list: tipo de dato para listas mutables
 ;; Implementada como vector de Racket para permitir mutación
 (define-datatype mutable-list mutable-list?
@@ -594,6 +640,13 @@
                           (begin
                             (vector-set! vec pos val)
                             'ok))))))
+
+;; Convierte lista mutable a lista de Racket
+(define mutable-list->racket-list
+  (lambda (lst)
+    (cases mutable-list lst
+      (a-mutable-list (vec)
+                      (vector->list vec)))))
 
 ;; Convierte un valor a string para impresión
 (define expval->string
@@ -766,20 +819,7 @@
                                       ids
                                       args
                                       (make-list-of-n-smthing(length args) 'var)
-                                      env )))
-      (func-closure (ids body-exps return-exp env)
-                    (let ((new-env (extend-env
-                                    ids
-                                    args
-                                    (make-list-of-n-smthing(length args) 'var)
-                                    env)))
-                      ;; Evaluar las expresiones del body en secuencia (por efectos secundarios)
-                      (for-each
-                       (lambda (exp)
-                         (eval-expression exp new-env))
-                       body-exps)
-                      ;; Evaluar y retornar la expresión de retorno
-                      (eval-expression return-exp new-env))))))
+                                      env ))))))
 
 ;*******************************************************************************************
 ;Ambientes
@@ -823,18 +863,13 @@
      labs
      env)))
 
-;; extend-env-recursively: crea ambiente extendido para procedimientos recursivos
-;; proc-names: lista de nombres de funciones
-;; idss: lista de listas de parámetros
-;; bodies: lista de expresiones (cuerpo/retorno de cada función)
-;; old-env: ambiente previo
-;; Las funciones se registran con label 'func para que apply-env-label las identifique
-;; Primero crea el ambiente con closures simples, luego func-decl los reemplaza por func-closures
+;-recursively: <list-of symbols> <list-of <list-of symbols>> <list-of expressions> environment -> environment
+;función que crea un ambiente extendido para procedimientos recursivos
 (define extend-env-recursively
   (lambda (proc-names idss bodies old-env)
     (let ((len (length proc-names)))
       (let ((vec (make-vector len)))
-        (let ((env (extended-env-record proc-names vec (make-list-of-n-smthing len 'func) old-env)))
+        (let ((env (extended-env-record proc-names vec (make-list-of-n-smthing len 'var) old-env)))
           (for-each
             (lambda (pos ids body)
               (vector-set! vec pos (direct-target (closure ids body env))))
@@ -871,11 +906,15 @@
 ;*******************************************************************************************
 ;Blancos y Referencias
 
-;; expval?: determina si un valor es un valor expresado válido
-;; Incluye: números, booleanos, strings, procedimientos (closures)
 (define expval?
   (lambda (x)
-    (or (number? x) (boolean? x) (string? x) (procval? x) (mutable-list? x) (mutable-dict? x))))
+  (or (number? x)
+    (boolean? x)
+    (string? x)
+    (procval? x)
+    (mutable-list? x)
+    (mutable-dict? x)
+    (eqv? x 'null-val))))
 
 (define ref-to-direct-target?
   (lambda (x)
@@ -944,3 +983,71 @@
 ;$ var x = 10 set x = 20; print x end
 ;$ const x = 10 set x = 20; print x end
 ;$ var x = 10; y = 234; asa = 159 set asa = 20; print asa end
+
+;; ========== Ejemplos Paso 1: Tipos base (cadenas, booleanos, null) ==========
+
+;; --- Cadenas de texto ---
+;; (scan&parse "$ var nombre = \"Robinson\" print nombre end")
+;; (scan&parse "$ var saludo = \"Hola mundo\" print saludo end")
+
+;; --- Booleanos ---
+;; (scan&parse "$ var activo = true print activo end")
+;; (scan&parse "$ var inactivo = false print inactivo end")
+
+;; --- Null ---
+;; (scan&parse "$ var vacio = null print vacio end")
+
+;; --- Combinacion de tipos con var y const ---
+;; (scan&parse "$ var x = 42; nombre = \"Juan\"; activo = true print nombre end")
+;; (scan&parse "$ const pi = 3.14; mensaje = \"hola\" print mensaje end")
+
+;; --- Semantica dinamica de true-value? ---
+;; false, 0, "", null son falsos. Todo lo demas es verdadero.
+;; (scan&parse "$ var x = 0 if x then print 1 else print 0 end")
+;; (scan&parse "$ var x = false if x then print 1 else print 0 end")
+;; (scan&parse "$ var x = null if x then print 1 else print 0 end")
+;; (scan&parse "$ var x = 5 if x then print 1 else print 0 end")
+
+;; ========== Ejemplos Paso 2: Expresiones Booleanas ==========
+
+;; --- Predicados primitivos ---
+;; (scan&parse "$ var a = <(3, 5) print a end")
+;; (scan&parse "$ var a = >(10, 5) print a end")
+;; (scan&parse "$ var a = <=(5, 5) print a end")
+;; (scan&parse "$ var a = ==(4, 4) print a end")
+;; (scan&parse "$ var a = <>(4, 5) print a end")
+
+;; --- Operadores booleanos compuestos ---
+;; (scan&parse "$ var a = and(<(3,5), >(10,2)) print a end")
+;; (scan&parse "$ var a = or(<(5,3), >(10,2)) print a end")
+;; (scan&parse "$ var a = not(==(3,3)) print a end")
+
+;; --- Uso en condicionales ---
+;; (scan&parse "$ var x = 10; y = 20 if <(x, y) then print \"Menor\" else print \"Mayor\" end end")
+
+;; ========== Ejemplos Paso 3: Condicionales y Switch ==========
+
+;; --- Condicional IF con end ---
+;; (scan&parse "$ var edad = 20 if >=(edad, 18) then print \"Mayor\" else print \"Menor\" end end")
+
+;; --- Switch ---
+;; (scan&parse "$ var color = \"verde\" switch color { case \"rojo\": print \"Detente\" case \"verde\": print \"Sigue\" default: print \"Desconocido\" } end")
+
+;; ========== Ejemplos Paso 4: Ciclos Iterativos ==========
+
+;; --- While ---
+;; (scan&parse "$ var x = 0 while <(x, 3) do begin print x; set x = +(x, 1) end done")
+
+;; --- For ---
+;; (scan&parse "$ var x = 0 for i in x do print i done") ; Dará error porque x no es una lista aún.
+
+;; ========== Ejemplos Paso 5: Funciones y Recursión ==========
+
+;; --- Función simple con retorno ---
+;; (scan&parse "$ func sumar(a, b) { return +(a, b) } print sumar(5, 10) end")
+
+;; --- Función sin retorno (devuelve null) ---
+;; (scan&parse "$ func saludar(nombre) { print nombre } print saludar(\"Juan\") end")
+
+;; --- Recursión ---
+;; (scan&parse "$ func factorial(n) { if <=(n, 1) then return 1 else return *(n, factorial(-(n, 1))) end } print factorial(5) end")
