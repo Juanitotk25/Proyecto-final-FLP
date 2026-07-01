@@ -89,6 +89,7 @@ Juan David Lopez Vanegas
     (expression ("true") true-exp)
     (expression ("false") false-exp)
     (expression ("null") null-exp)
+    (expression (exp-bool) bool-oper-exp)
     (expression
      (primitivaArit "("expression")")
      primapp-exp)
@@ -254,8 +255,53 @@ Juan David Lopez Vanegas
       (true-exp () #t)
       (false-exp () #f)
       (null-exp () 'null-val)
+      (bool-oper-exp (expB) (eval-exp-bool expB env))
       )
     ))
+
+;eval-exp-bool: <exp-bool> <enviroment> -> boolean
+(define eval-exp-bool
+  (lambda (expB env)
+    (cases exp-bool expB
+      (pred-prim-exp (prim exp1 exp2)
+        (let ((val1 (eval-expression exp1 env))
+              (val2 (eval-expression exp2 env)))
+          (apply-pred-prim prim val1 val2)))
+      (valor-verdad (b)
+        (cases bool b
+          (true-val () #t)
+          (false-val () #f)))
+      (oper-bin-bool-exp (oper expB1 expB2)
+        (let ((val1 (eval-exp-bool expB1 env))
+              (val2 (eval-exp-bool expB2 env)))
+          (apply-oper-bin-bool oper val1 val2)))
+      (oper-un-bool-exp (oper expB1)
+        (let ((val1 (eval-exp-bool expB1 env)))
+          (apply-oper-un-bool oper val1))))))
+
+;apply-pred-prim: <pred-prim> <val> <val> -> boolean
+(define apply-pred-prim
+  (lambda (prim val1 val2)
+    (cases pred-prim prim
+      (menor () (< val1 val2))
+      (mayor () (> val1 val2))
+      (menorIgual () (<= val1 val2))
+      (mayorIgual () (>= val1 val2))
+      (igual () (equal? val1 val2))
+      (diferente () (not (equal? val1 val2))))))
+
+;apply-oper-bin-bool: <oper-bin-bool> <val> <val> -> boolean
+(define apply-oper-bin-bool
+  (lambda (oper val1 val2)
+    (cases oper-bin-bool oper
+      (and-exp () (and val1 val2))
+      (or-exp () (or val1 val2)))))
+
+;apply-oper-un-bool: <oper-un-bool> <val> -> boolean
+(define apply-oper-un-bool
+  (lambda (oper val)
+    (cases oper-un-bool oper
+      (negacion () (not val)))))
 
 ;  $ var asa = 123; x = 345; y = 567 print asa end;
 (define main
@@ -569,3 +615,20 @@ Juan David Lopez Vanegas
 ;; (scan&parse "$ var x = false if x then print 1 else print 0 end")
 ;; (scan&parse "$ var x = null if x then print 1 else print 0 end")
 ;; (scan&parse "$ var x = 5 if x then print 1 else print 0 end")
+
+;; ========== Ejemplos Paso 2: Expresiones Booleanas ==========
+
+;; --- Predicados primitivos ---
+;; (scan&parse "$ var a = <(3, 5) print a end")
+;; (scan&parse "$ var a = >(10, 5) print a end")
+;; (scan&parse "$ var a = <=(5, 5) print a end")
+;; (scan&parse "$ var a = ==(4, 4) print a end")
+;; (scan&parse "$ var a = <>(4, 5) print a end")
+
+;; --- Operadores booleanos compuestos ---
+;; (scan&parse "$ var a = and(<(3,5), >(10,2)) print a end")
+;; (scan&parse "$ var a = or(<(5,3), >(10,2)) print a end")
+;; (scan&parse "$ var a = not(==(3,3)) print a end")
+
+;; --- Uso en condicionales ---
+;; (scan&parse "$ var x = 10; y = 20 if <(x, y) then print \"Menor\" else print \"Mayor\" end")
