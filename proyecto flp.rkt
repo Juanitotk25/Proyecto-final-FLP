@@ -75,6 +75,8 @@
     ("-" digit (arbno digit) "." digit (arbno digit) )number)
    (text
     ("\"" (arbno (not #\")) "\"") string)
+   (simbolo-token
+    ("'" letter (arbno (or letter digit))) symbol)
    ))
 
 ;Especificación Sintáctica (gramática)
@@ -89,6 +91,7 @@
     (expression ("print" expression) print-exp)
     (expression (text) texto-exp)
     (expression ("null") null-exp)
+    (expression (simbolo-token) simbolo-exp)
     (expression (exp-bool) bool-oper-exp)
     (expression
      (primitivaArit "(" (separated-list expression ",") ")")
@@ -344,6 +347,7 @@
                                    (extend-env-recursively proc-names idss bodies env)))
       (texto-exp (txt)
                  (substring txt 1 (- (string-length txt) 1)))
+      (simbolo-exp (sym) sym)
       
       (null-exp () 'null-val)
       (bool-oper-exp (expB) (eval-exp-bool expB env))
@@ -476,28 +480,74 @@
 
 (define eval-primapp-exp-rands
   (lambda (rands env)
-    (map (lambda (x) (eval-expression x env)) rands)))
+    (eval-expression rand env)))
 
 (define eval-def-exp-rands
   (lambda (rands env)
-    (map (lambda (x)
-           (direct-target (eval-expression x env)))
+    (map (lambda (x) (eval-def-exp-rand x env))
          rands)))
 
+(define eval-def-exp-rand
+  (lambda (rand env)
+    (eval-expression rand env)))
+
+(define eval-primapp-exp-rands
+  (lambda (rands env)
+    (map (lambda (x) (eval-expression x env))
+         rands)))
+
+;; Helpers para álgebra simbólica
+(define (es-simbolico? val)
+  (or (symbol? val)
+      (and (pair? val) (eq? (car val) 'simbolico))))
+
+(define (alguno-simbolico? args)
+  (cond
+    ((null? args) #f)
+    ((es-simbolico? (car args)) #t)
+    (else (alguno-simbolico? (cdr args)))))
+
+(define (crear-exp-simbolica prim args)
+  (cons 'simbolico (cons prim args)))
+
+(define (primitiva-aritmetica? prim)
+  (cases primitivaArit prim
+    (add-prim () #t)
+    (substract-prim () #t)
+    (mult-prim () #t)
+    (div-prim () #t)
+    (mod-prim () #t)
+    (incr-prim () #t)
+    (decr-prim () #t)
+    (else #f)))
+
+(define prim-name
+  (lambda (prim)
+    (cases primitivaArit prim
+      (add-prim () "+")
+      (substract-prim () "-")
+      (mult-prim () "*")
+      (div-prim () "/")
+      (mod-prim () "%")
+      (incr-prim () "add1")
+      (decr-prim () "sub1")
+      (else "?"))))
 
 ;apply-primitive: <primitiva> <list-of-expression> -> valor
 (define apply-primitive
   (lambda (prim args)
-    (cases primitivaArit prim
-      (add-prim () (+ (car args) (cadr args)))
-      (substract-prim () (- (car args) (cadr args)))
-      (mult-prim () (* (car args) (cadr args)))
-      (div-prim () (/ (car args) (cadr args)))
-      (mod-prim () (modulo (car args) (cadr args)))
-      (incr-prim () (+ (car args) 1))
-      (decr-prim () (- (car args) 1))
-      ;; ---------- LIST PRIMITIVES ----------
-      (vacio-prim () 'vacio)
+    (if (and (primitiva-aritmetica? prim) (alguno-simbolico? args))
+        (crear-exp-simbolica prim args)
+        (cases primitivaArit prim
+          (add-prim () (+ (car args) (cadr args)))
+          (substract-prim () (- (car args) (cadr args)))
+          (mult-prim () (* (car args) (cadr args)))
+          (div-prim () (/ (car args) (cadr args)))
+          (mod-prim () (modulo (car args) (cadr args)))
+          (incr-prim () (+ (car args) 1))
+          (decr-prim () (- (car args) 1))
+          ;; ---------- LIST PRIMITIVES ----------
+          (vacio-prim () 'vacio)
       (vacio-pred-prim ()
         (let ((lst (car args)))
           (cond
@@ -588,6 +638,17 @@
              (unless (null? (cdr ks)) (display ", "))
              (loop (cdr ks)))))
        (display "}"))
+      ((symbol? val) (display val))
+      ((and (pair? val) (eq? (car val) 'simbolico))
+       (display "(")
+       (display (prim-name (cadr val)))
+       (display " ")
+       (let loop ((args (cddr val)))
+         (unless (null? args)
+           (mathflow-display (car args))
+           (unless (null? (cdr args)) (display ", "))
+           (loop (cdr args))))
+       (display ")"))
       (else (display val)))))
 
 ;true-value?: determina si un valor dado corresponde a un valor booleano falso o verdadero
@@ -869,3 +930,12 @@
 
 ;; --- Bloques begin ... end ---
 ;; (scan&parse "$ var x = 0 if ==(x, 0) then begin print \"Es cero\"; set x = 1 end else print \"No es\" end end")
+
+;; ========== Ejemplos Paso 9: Simbolos Algebraicos ==========
+
+;; --- Símbolos ---
+;; (scan&parse "$ var f = 'x print f end")
+
+;; --- Expresiones Simbólicas ---
+;; (scan&parse "$ var f = +('x, 1) print f end")
+;; (scan&parse "$ var h = *(+('x, 2), 'y) print h end")
