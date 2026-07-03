@@ -941,7 +941,8 @@
 ;; (scan&parse "$ var inactivo = false print inactivo end")
 
 ;; --- Null ---
-;; (scan&parse "$ var vacio = null print vacio end")
+;; CORREGIDO: "vacio" es palabra reservada, se cambió el nombre de la variable
+;; (scan&parse "$ var v = null print v end")
 
 ;; --- Combinacion de tipos con var y const ---
 ;; (scan&parse "$ var x = 42; nombre = \"Juan\"; activo = true print nombre end")
@@ -949,10 +950,11 @@
 
 ;; --- Semantica dinamica de true-value? ---
 ;; false, 0, "", null son falsos. Todo lo demas es verdadero.
-;; (scan&parse "$ var x = 0 if x then print 1 else print 0 end")
-;; (scan&parse "$ var x = false if x then print 1 else print 0 end")
-;; (scan&parse "$ var x = null if x then print 1 else print 0 end")
-;; (scan&parse "$ var x = 5 if x then print 1 else print 0 end")
+;; CORREGIDO: se agregó un segundo "end" (el if cierra con "end", y el programa necesita otro "end" más)
+;; (scan&parse "$ var x = 0 if x then print 1 else print 0 end end")
+;; (scan&parse "$ var x = false if x then print 1 else print 0 end end")
+;; (scan&parse "$ var x = null if x then print 1 else print 0 end end")
+;; (scan&parse "$ var x = 5 if x then print 1 else print 0 end end")
 
 ;; ========== Ejemplos Paso 2: Expresiones Booleanas ==========
 
@@ -982,28 +984,37 @@
 ;; ========== Ejemplos Paso 4: Ciclos Iterativos ==========
 
 ;; --- While ---
-;; (scan&parse "$ var x = 0 while <(x, 3) do begin print x; set x = +(x, 1) end done")
+;; CORREGIDO: faltaba el "end" final del programa (begin..end cierra el begin, done cierra el while)
+;; (scan&parse "$ var x = 0 while <(x, 3) do begin print x; set x = +(x, 1) end done end")
 
 ;; --- For ---
-;; (scan&parse "$ var x = 0 for i in x do print i done") ; Dará error porque x no es una lista aún.
+;; CORREGIDO: se agregó el "end" final del programa. Sigue dando error esperado (x no es lista)
+;; (scan&parse "$ var x = 0 for i in x do print i done end") ; Dará error porque x no es una lista aún.
+;; Ejemplo funcional de for con una lista real:
+;; (scan&parse "$ var l = crear-lista(1, crear-lista(2, crear-lista(3, vacio()))) for i in l do print i done end")
 
 ;; ========== Ejemplos Paso 5: Funciones y Recursión ==========
 
 ;; --- Función simple con retorno ---
-;; (scan&parse "$ func sumar(a, b) { return +(a, b) } print sumar(5, 10) end")
+;; CORREGIDO: para invocar una función definida con "func" se necesita la palabra "call"
+;; (scan&parse "$ func sumar(a, b) { return +(a, b) } print call sumar(5, 10) end")
 
 ;; --- Función sin retorno (devuelve null) ---
-;; (scan&parse "$ func saludar(nombre) { print nombre } print saludar(\"Juan\") end")
+;; CORREGIDO: "func" exige un "return" obligatorio, y la llamada necesita "call"
+;; (scan&parse "$ func saludar(nombre) { print nombre return null } print call saludar(\"Juan\") end")
 
 ;; --- Recursión ---
-;; (scan&parse "$ func factorial(n) { if <=(n, 1) then return 1 else return *(n, factorial(-(n, 1))) end } print factorial(5) end")
+;; CORREGIDO: "return" solo puede aparecer UNA vez, justo antes del "}", no dentro de las ramas del if.
+;; Se reescribe para que el "if" completo sea la expresión retornada; las llamadas usan "call".
+;; (scan&parse "$ func factorial(n) { return if <=(n, 1) then 1 else *(n, call factorial(-(n, 1))) end } print call factorial(5) end")
 
 ;; ========== Ejemplos Paso 6 & 7: Listas y Diccionarios ==========
 
 ;; --- Listas ---
-;; (scan&parse "$ var l = crear-lista(1, crear-lista(2, vacio)) print l end")
-;; (scan&parse "$ var l = crear-lista(1, crear-lista(2, vacio)); l2 = crear-lista(3, vacio) print append(l, l2) end")
-;; (scan&parse "$ var l = crear-lista(1, crear-lista(2, vacio)) set l = set-list(l, 0, 99); print l end")
+;; CORREGIDO: "vacio" siempre se llama como primitiva: vacio()
+;; (scan&parse "$ var l = crear-lista(1, crear-lista(2, vacio())) print l end")
+;; (scan&parse "$ var l = crear-lista(1, crear-lista(2, vacio())); l2 = crear-lista(3, vacio()) print append(l, l2) end")
+;; (scan&parse "$ var l = crear-lista(1, crear-lista(2, vacio())) set l = set-list(l, 0, 99); print l end")
 
 ;; --- Diccionarios ---
 ;; (scan&parse "$ var d = crear-diccionario(\"nombre\", \"Ana\", \"edad\", 34) print d end")
@@ -1041,5 +1052,6 @@
 ;; (scan&parse "$ var f = -(+('x, 0), 0) print simplificar(f) end")
 
 ;; --- Evaluar (sustitucion + simplificacion) ---
-;; (scan&parse "$ var f = +('x, 1) print evaluar(f, 'x, 5) end")
-;; (scan&parse "$ var f = *(+('x, 2), 'y) print evaluar(f, 'x, 3) end")
+;; CORREGIDO: el binding usa identificador = expresión, sin comilla: evaluar(f, x = 5)
+;; (scan&parse "$ var f = +('x, 1) print evaluar(f, x = 5) end")
+;; (scan&parse "$ var f = *(+('x, 2), 'y) print evaluar(f, x = 3) end")
