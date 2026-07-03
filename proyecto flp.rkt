@@ -109,6 +109,14 @@
                 while-exp)
     (expression ("for" identifier "in" expression "do" expression "done")
                 for-exp)
+    (expression ("[" (separated-list expression ",") "]")
+                lista-literal-exp)
+    (expression ("{" (separated-list identifier ":" expression ",") "}")
+                dicc-literal-exp)
+    (expression ("evaluar" "(" expression "," (separated-list identifier "=" expression ",") ")")
+                evaluar-exp)
+    (expression ("simplificar" "(" expression ")")
+                simplificar-exp-sym)
     (expression ("begin" expression (arbno ";" expression) "end")
                 begin-struct-exp)
     (expression ( "(" expression (arbno expression) ")")
@@ -121,6 +129,8 @@
                 define-var)
     (sentence ("const" identifier "=" expression (arbno ";" identifier "=" expression))
                 const)
+    (sentence ("symbol" identifier)
+                symbol-sentence)
     (sentence ("func" identifier "(" (separated-list identifier ",") ")" "{" (arbno expression) "return" expression "}")
                 func-sentence)
     
@@ -168,9 +178,6 @@
       (primitivaArit ("longitud") longitud-prim)
       (primitivaArit ("concatenar") concatenar-prim)
       (primitivaArit ("buscar") buscar-prim)
-      ;; ---------- ALGEBRA SIMBOLICA ----------
-      (primitivaArit ("simplificar") simplificar-prim)
-      (primitivaArit ("evaluar") evaluar-prim)
       ))
 ;Tipos de datos para la sintaxis abstracta de la gramática
 
@@ -333,6 +340,24 @@
                            (begin
                              (eval-expression (car exps) env)
                              (loop (cdr exps))))))
+      (lista-literal-exp (exps)
+         (map (lambda (e) (eval-expression e env)) exps))
+      (dicc-literal-exp (ids exps)
+         (let loop ((is ids) (es exps))
+            (if (null? is)
+                '()
+                (cons (cons (symbol->string (car is)) (eval-expression (car es) env))
+                      (loop (cdr is) (cdr es))))))
+      (simplificar-exp-sym (expr)
+         (simplificar-exp (eval-expression expr env)))
+      (evaluar-exp (expr ids vals)
+         (let ((expr-val (eval-expression expr env))
+               (vals-eval (map (lambda (v) (eval-expression v env)) vals)))
+            (let loop ((e expr-val) (is ids) (vs vals-eval))
+               (if (null? is)
+                   (simplificar-exp e)
+                   (loop (sustituir-simbolo e (car is) (car vs))
+                         (cdr is) (cdr vs))))))
       (begin-struct-exp (exp exps)
                         (let loop ((val (eval-expression exp env))
                                    (resto exps))
@@ -436,6 +461,12 @@
                 (eval-def-exp-rands (cons rhs rhss) env)
                 (make-list-of-n-smthing (length (cons rhs rhss)) 'const)
                 env)))
+          (if (null? (cdr sen))
+              new-env
+              (save-sen (cdr sen) new-env))))
+              
+      (symbol-sentence (id)
+        (let ((new-env (extend-env (list id) (list (list 'simbolico id)) (list 'const) env)))
           (if (null? (cdr sen))
               new-env
               (save-sen (cdr sen) new-env))))
@@ -653,18 +684,6 @@
         (string-append (car args) (cadr args)))
       (buscar-prim ()
         (buscar-subcadena (car args) (cadr args)))
-      ;algebra simbolica
-      (simplificar-prim ()
-        (simplificar-exp (car args)))
-      (evaluar-prim ()
-        ;; evaluar(expr, simbolo, valor)
-        ;; ej: evaluar(+('x, 1), 'x, 5) => 6
-        (let ((expr (car args))
-              (sym (cadr args))
-              (val (caddr args)))
-          (let ((sustituida (sustituir-simbolo expr sym val)))
-            ;; despues de sustituir, intentamos simplificar
-            (simplificar-exp sustituida))))
       )))
 
 ;simplificar-exp: recorre recursivamente el arbol
