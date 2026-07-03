@@ -168,6 +168,9 @@
       (primitivaArit ("longitud") longitud-prim)
       (primitivaArit ("concatenar") concatenar-prim)
       (primitivaArit ("buscar") buscar-prim)
+      ;; ---------- ALGEBRA SIMBOLICA ----------
+      (primitivaArit ("simplificar") simplificar-prim)
+      (primitivaArit ("evaluar") evaluar-prim)
       ))
 ;Tipos de datos para la sintaxis abstracta de la gramática
 
@@ -610,7 +613,92 @@
       (buscar-prim ()
         ;; string-contains? devuelve booleano, si es verdad pasamos #t
         (if (string-contains? (car args) (cadr args)) #t #f))
+      ;; ---------- ALGEBRA SIMBOLICA ----------
+      (simplificar-prim ()
+        (simplificar-exp (car args)))
+      (evaluar-prim ()
+        ;; evaluar(expr, simbolo, valor)
+        ;; ej: evaluar(+('x, 1), 'x, 5) => 6
+        (let ((expr (car args))
+              (sym (cadr args))
+              (val (caddr args)))
+          (let ((sustituida (sustituir-simbolo expr sym val)))
+            ;; despues de sustituir, intentamos simplificar
+            (simplificar-exp sustituida))))
       )))
+
+;; simplificar-exp: recorre recursivamente el arbol simbolico
+;; y aplica reglas basicas de simplificacion
+(define (simplificar-exp expr)
+  (cond
+    ;; si no es una expresion simbolica, devolver tal cual
+    ((not (and (pair? expr) (eq? (car expr) 'simbolico)))
+     expr)
+    ;; es simbolica: primero simplificar los hijos recursivamente
+    (else
+     (let* ((prim (cadr expr))
+            (args-raw (cddr expr))
+            ;; simplificamos cada subexpresion primero
+            (args (map simplificar-exp args-raw)))
+       ;; si despues de simplificar todo quedo numerico, evaluar directo
+       (if (andmap number? args)
+           (apply-primitive prim args)
+           ;; si no, aplicar las reglas de simplificacion
+           (simplificar-reglas prim args))))))
+
+;; simplificar-reglas: aplica identidades algebraicas basicas
+(define (simplificar-reglas prim args)
+  (cases primitivaArit prim
+    ;; x + 0 = x, 0 + x = x
+    (add-prim ()
+      (let ((a (car args)) (b (cadr args)))
+        (cond
+          ((and (number? b) (zero? b)) a)
+          ((and (number? a) (zero? a)) b)
+          (else (cons 'simbolico (cons prim args))))))
+    ;; x - 0 = x
+    (substract-prim ()
+      (let ((a (car args)) (b (cadr args)))
+        (cond
+          ((and (number? b) (zero? b)) a)
+          ;; x - x = 0 (si son el mismo simbolo)
+          ((equal? a b) 0)
+          (else (cons 'simbolico (cons prim args))))))
+    ;; x * 0 = 0, 0 * x = 0, x * 1 = x, 1 * x = x
+    (mult-prim ()
+      (let ((a (car args)) (b (cadr args)))
+        (cond
+          ((and (number? a) (zero? a)) 0)
+          ((and (number? b) (zero? b)) 0)
+          ((and (number? b) (= b 1)) a)
+          ((and (number? a) (= a 1)) b)
+          (else (cons 'simbolico (cons prim args))))))
+    ;; x / 1 = x
+    (div-prim ()
+      (let ((a (car args)) (b (cadr args)))
+        (cond
+          ((and (number? b) (= b 1)) a)
+          ;; x / x = 1
+          ((equal? a b) 1)
+          (else (cons 'simbolico (cons prim args))))))
+    ;; para las demas primitivas no hay regla especial
+    (else (cons 'simbolico (cons prim args)))))
+
+;; sustituir-simbolo: reemplaza todas las apariciones de sym por val
+;; dentro de una expresion simbolica (recorre recursivamente)
+(define (sustituir-simbolo expr sym val)
+  (cond
+    ;; si es el simbolo que buscamos, reemplazar
+    ((and (symbol? expr) (eq? expr sym)) val)
+    ;; si es una expresion simbolica compuesta, recorrer hijos
+    ((and (pair? expr) (eq? (car expr) 'simbolico))
+     (let ((prim (cadr expr))
+           (args (cddr expr)))
+       (cons 'simbolico
+             (cons prim
+                   (map (lambda (a) (sustituir-simbolo a sym val)) args)))))
+    ;; cualquier otra cosa se deja igual
+    (else expr)))
 
 ;mathflow-display: muestra valores de MathFlow en formato adecuado
 (define mathflow-display
@@ -939,3 +1027,15 @@
 ;; --- Expresiones Simbólicas ---
 ;; (scan&parse "$ var f = +('x, 1) print f end")
 ;; (scan&parse "$ var h = *(+('x, 2), 'y) print h end")
+
+;; ========== Ejemplos Paso 10: Simplificar y Evaluar ==========
+
+;; --- Simplificaciones basicas ---
+;; (scan&parse "$ var f = +('x, 0) print simplificar(f) end")
+;; (scan&parse "$ var f = *('x, 1) print simplificar(f) end")
+;; (scan&parse "$ var f = *('x, 0) print simplificar(f) end")
+;; (scan&parse "$ var f = -(+('x, 0), 0) print simplificar(f) end")
+
+;; --- Evaluar (sustitucion + simplificacion) ---
+;; (scan&parse "$ var f = +('x, 1) print evaluar(f, 'x, 5) end")
+;; (scan&parse "$ var f = *(+('x, 2), 'y) print evaluar(f, 'x, 3) end")
