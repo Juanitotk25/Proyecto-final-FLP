@@ -152,6 +152,13 @@
       (primitivaArit ("append") append-prim)
       (primitivaArit ("ref-list") ref-list-prim)
       (primitivaArit ("set-list") set-list-prim)
+      ;; ---------- DICT PRIMITIVES ----------
+      (primitivaArit ("crear-diccionario") crear-diccionario-prim)
+      (primitivaArit ("diccionario?") diccionario-pred-prim)
+      (primitivaArit ("ref-diccionario") ref-diccionario-prim)
+      (primitivaArit ("set-diccionario") set-diccionario-prim)
+      (primitivaArit ("claves") claves-prim)
+      (primitivaArit ("valores") valores-prim)
       ))
 ;Tipos de datos para la sintaxis abstracta de la gramática
 
@@ -529,6 +536,24 @@
           (if (eq? lst 'vacio)
               (eopl:error 'set-list "Lista vacía")
               (list-set (if (null? lst) '() lst) idx val))))
+      ;; ---------- DICT PRIMITIVES ----------
+      (crear-diccionario-prim ()
+        (let loop ((args args) (h (hash)))
+          (if (null? args)
+              h
+              (if (null? (cdr args))
+                  (eopl:error 'crear-diccionario "Falta valor para la llave ~s" (car args))
+                  (loop (cddr args) (hash-set h (car args) (cadr args)))))))
+      (diccionario-pred-prim ()
+        (hash? (car args)))
+      (ref-diccionario-prim ()
+        (hash-ref (car args) (cadr args) 'null-val))
+      (set-diccionario-prim ()
+        (hash-set (car args) (cadr args) (caddr args)))
+      (claves-prim ()
+        (hash-keys (car args)))
+      (valores-prim ()
+        (hash-values (car args)))
       )))
 
 ;mathflow-display: muestra valores de MathFlow en formato adecuado
@@ -537,6 +562,26 @@
     (cond
       ((boolean? val) (display (if val "true" "false")))
       ((eqv? val 'null-val) (display "null"))
+      ((eq? val 'vacio) (display "[]"))
+      ((list? val) 
+       (display "[") 
+       (let loop ((l val))
+         (unless (null? l)
+           (mathflow-display (car l))
+           (unless (null? (cdr l)) (display ", "))
+           (loop (cdr l))))
+       (display "]"))
+      ((hash? val)
+       (display "{")
+       (let ((keys (hash-keys val)))
+         (let loop ((ks keys))
+           (unless (null? ks)
+             (mathflow-display (car ks))
+             (display ": ")
+             (mathflow-display (hash-ref val (car ks)))
+             (unless (null? (cdr ks)) (display ", "))
+             (loop (cdr ks)))))
+       (display "}"))
       (else (display val)))))
 
 ;true-value?: determina si un valor dado corresponde a un valor booleano falso o verdadero
@@ -793,3 +838,17 @@
 
 ;; --- Recursión ---
 ;; (scan&parse "$ func factorial(n) { if <=(n, 1) then return 1 else return *(n, factorial(-(n, 1))) end } print factorial(5) end")
+
+;; ========== Ejemplos Paso 6 & 7: Listas y Diccionarios ==========
+
+;; --- Listas ---
+;; (scan&parse "$ var l = crear-lista(1, crear-lista(2, vacio)) print l end")
+;; (scan&parse "$ var l = crear-lista(1, crear-lista(2, vacio)); l2 = crear-lista(3, vacio) print append(l, l2) end")
+;; (scan&parse "$ var l = crear-lista(1, crear-lista(2, vacio)) set l = set-list(l, 0, 99); print l end")
+
+;; --- Diccionarios ---
+;; (scan&parse "$ var d = crear-diccionario(\"nombre\", \"Ana\", \"edad\", 34) print d end")
+;; (scan&parse "$ var d = crear-diccionario(\"nombre\", \"Ana\") set d = set-diccionario(d, \"edad\", 34); print d end")
+;; (scan&parse "$ var d = crear-diccionario(\"nombre\", \"Ana\") print ref-diccionario(d, \"nombre\") end")
+;; (scan&parse "$ var d = crear-diccionario(\"nombre\", \"Ana\", \"edad\", 34) print claves(d) end")
+;; (scan&parse "$ var d = crear-diccionario(\"nombre\", \"Ana\", \"edad\", 34) print valores(d) end")
