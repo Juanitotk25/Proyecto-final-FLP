@@ -182,12 +182,7 @@
 ;*******************************************************************************************
 ;Parser, Scanner, Interfaz
 
-;; Necesitamos la función `void` para descartar el valor de retorno del REPL.
-;; `void` está disponible en el módulo base de Racket.
-;; Necesario para la primitiva `void` y para funciones de lista
-(require racket/string)
-(require racket/base)
-(require racket/list) ; list-set, list-ref, etc.
+
 
 ;El FrontEnd (Análisis léxico (scanner) y sintáctico (parser) integrados)
 
@@ -499,7 +494,52 @@
     (map (lambda (x) (eval-expression x env))
          rands)))
 
-;; Helpers para álgebra simbólica
+;todos-numericos?: verifica si todos los elementos de una lista son numeros
+(define (todos-numericos? lst)
+  (cond
+    ((null? lst) #t)
+    ((number? (car lst)) (todos-numericos? (cdr lst)))
+    (else #f)))
+
+;reemplazar-en-lista: reemplaza el elemento en la posicion idx
+(define (reemplazar-en-lista lst idx val)
+  (cond
+    ((null? lst) '())
+    ((zero? idx) (cons val (cdr lst)))
+    (else (cons (car lst) (reemplazar-en-lista (cdr lst) (- idx 1) val)))))
+
+;es-diccionario?: verifica si un valor es una lista de pares (llave . valor)
+(define (es-diccionario? val)
+  (and (list? val)
+       (not (null? val))
+       (pair? (car val))))
+
+;buscar-en-dict: busca una llave en el diccionario
+(define (buscar-en-dict dict llave)
+  (cond
+    ((null? dict) 'null-val)
+    ((equal? (caar dict) llave) (cdar dict))
+    (else (buscar-en-dict (cdr dict) llave))))
+
+;actualizar-dict: actualiza o agrega un par llave-valor
+(define (actualizar-dict dict llave valor)
+  (cond
+    ((null? dict) (list (cons llave valor)))
+    ((equal? (caar dict) llave) (cons (cons llave valor) (cdr dict)))
+    (else (cons (car dict) (actualizar-dict (cdr dict) llave valor)))))
+
+;buscar-subcadena: verifica si sub aparece dentro de str
+(define (buscar-subcadena str sub)
+  (let ((len-str (string-length str))
+        (len-sub (string-length sub)))
+    (if (> len-sub len-str) #f
+        (let loop ((i 0))
+          (cond
+            ((> (+ i len-sub) len-str) #f)
+            ((string=? (substring str i (+ i len-sub)) sub) #t)
+            (else (loop (+ i 1))))))))
+
+;helpers para algebra simbolica
 (define (es-simbolico? val)
   (or (symbol? val)
       (and (pair? val) (eq? (car val) 'simbolico))))
@@ -549,7 +589,7 @@
           (mod-prim () (modulo (car args) (cadr args)))
           (incr-prim () (+ (car args) 1))
           (decr-prim () (- (car args) 1))
-          ;; ---------- LIST PRIMITIVES ----------
+          ;primitivas de listas
           (vacio-prim () 'vacio)
       (vacio-pred-prim ()
         (let ((lst (car args)))
@@ -586,34 +626,34 @@
         (let ((lst (car args)) (idx (cadr args)) (val (caddr args)))
           (if (eq? lst 'vacio)
               (eopl:error 'set-list "Lista vacía")
-              (list-set (if (null? lst) '() lst) idx val))))
-      ;; ---------- DICT PRIMITIVES ----------
+              (reemplazar-en-lista (if (null? lst) '() lst) idx val))))
+      ;primitivas de diccionarios (listas de asociacion)
       (crear-diccionario-prim ()
-        (let loop ((args args) (h (hash)))
-          (if (null? args)
-              h
-              (if (null? (cdr args))
-                  (eopl:error 'crear-diccionario "Falta valor para la llave ~s" (car args))
-                  (loop (cddr args) (hash-set h (car args) (cadr args)))))))
+        (let loop ((a args))
+          (if (null? a)
+              '()
+              (if (null? (cdr a))
+                  (eopl:error 'crear-diccionario "Falta valor para la llave ~s" (car a))
+                  (cons (cons (car a) (cadr a))
+                        (loop (cddr a)))))))
       (diccionario-pred-prim ()
-        (hash? (car args)))
+        (es-diccionario? (car args)))
       (ref-diccionario-prim ()
-        (hash-ref (car args) (cadr args) 'null-val))
+        (buscar-en-dict (car args) (cadr args)))
       (set-diccionario-prim ()
-        (hash-set (car args) (cadr args) (caddr args)))
+        (actualizar-dict (car args) (cadr args) (caddr args)))
       (claves-prim ()
-        (hash-keys (car args)))
+        (map car (car args)))
       (valores-prim ()
-        (hash-values (car args)))
-      ;; ---------- STRING PRIMITIVES ----------
+        (map cdr (car args)))
+      ;primitivas de cadenas
       (longitud-prim ()
         (string-length (car args)))
       (concatenar-prim ()
         (string-append (car args) (cadr args)))
       (buscar-prim ()
-        ;; string-contains? devuelve booleano, si es verdad pasamos #t
-        (if (string-contains? (car args) (cadr args)) #t #f))
-      ;; ---------- ALGEBRA SIMBOLICA ----------
+        (buscar-subcadena (car args) (cadr args)))
+      ;algebra simbolica
       (simplificar-prim ()
         (simplificar-exp (car args)))
       (evaluar-prim ()
@@ -627,8 +667,8 @@
             (simplificar-exp sustituida))))
       )))
 
-;; simplificar-exp: recorre recursivamente el arbol simbolico
-;; y aplica reglas basicas de simplificacion
+;simplificar-exp: recorre recursivamente el arbol
+;y aplica las reglas de simplificacion
 (define (simplificar-exp expr)
   (cond
     ;; si no es una expresion simbolica, devolver tal cual
@@ -640,13 +680,13 @@
             (args-raw (cddr expr))
             ;; simplificamos cada subexpresion primero
             (args (map simplificar-exp args-raw)))
-       ;; si despues de simplificar todo quedo numerico, evaluar directo
-       (if (andmap number? args)
+       ;si todos los argumentos ya son numeros, evaluar la operacion
+       (if (todos-numericos? args)
            (apply-primitive prim args)
-           ;; si no, aplicar las reglas de simplificacion
+           ;si no, intentar simplificar con reglas algebraicas
            (simplificar-reglas prim args))))))
 
-;; simplificar-reglas: aplica identidades algebraicas basicas
+;simplificar-reglas: aplica identidades algebraicas
 (define (simplificar-reglas prim args)
   (cases primitivaArit prim
     ;; x + 0 = x, 0 + x = x
@@ -684,8 +724,8 @@
     ;; para las demas primitivas no hay regla especial
     (else (cons 'simbolico (cons prim args)))))
 
-;; sustituir-simbolo: reemplaza todas las apariciones de sym por val
-;; dentro de una expresion simbolica (recorre recursivamente)
+;sustituir-simbolo: reemplaza apariciones de sym por val
+;recorre recursivamente la expresion simbolica
 (define (sustituir-simbolo expr sym val)
   (cond
     ;; si es el simbolo que buscamos, reemplazar
@@ -715,16 +755,17 @@
            (unless (null? (cdr l)) (display ", "))
            (loop (cdr l))))
        (display "]"))
-      ((hash? val)
+      ((es-diccionario? val)
        (display "{")
-       (let ((keys (hash-keys val)))
-         (let loop ((ks keys))
-           (unless (null? ks)
-             (mathflow-display (car ks))
-             (display ": ")
-             (mathflow-display (hash-ref val (car ks)))
-             (unless (null? (cdr ks)) (display ", "))
-             (loop (cdr ks)))))
+       (let loop ((pares val))
+         (if (null? pares)
+             (void)
+             (begin
+               (mathflow-display (caar pares))
+               (display ": ")
+               (mathflow-display (cdar pares))
+               (if (not (null? (cdr pares))) (display ", ") (void))
+               (loop (cdr pares)))))
        (display "}"))
       ((symbol? val) (display val))
       ((and (pair? val) (eq? (car val) 'simbolico))
