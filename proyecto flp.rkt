@@ -106,6 +106,8 @@
                 while-exp)
     (expression ("for" identifier "in" expression "do" expression "done")
                 for-exp)
+    (expression ("begin" expression (arbno ";" expression) "end")
+                begin-struct-exp)
     (expression ( "(" expression (arbno expression) ")")
                 app-exp)
     (expression ("letrec" (arbno identifier "(" (separated-list identifier ",") ")" "=" expression)  "in" expression) 
@@ -159,6 +161,10 @@
       (primitivaArit ("set-diccionario") set-diccionario-prim)
       (primitivaArit ("claves") claves-prim)
       (primitivaArit ("valores") valores-prim)
+      ;; ---------- STRINGS PRIMITIVES ----------
+      (primitivaArit ("longitud") longitud-prim)
+      (primitivaArit ("concatenar") concatenar-prim)
+      (primitivaArit ("buscar") buscar-prim)
       ))
 ;Tipos de datos para la sintaxis abstracta de la gramática
 
@@ -341,6 +347,13 @@
                            (begin
                              (eval-expression (car exps) env)
                              (loop (cdr exps))))))
+      (begin-struct-exp (exp exps)
+                        (let loop ((val (eval-expression exp env))
+                                   (resto exps))
+                          (if (null? resto)
+                              val
+                              (loop (eval-expression (car resto) env)
+                                    (cdr resto)))))
       (letrec-exp (proc-names idss bodies letrec-body)
                   (eval-expression letrec-body
                                    (extend-env-recursively proc-names idss bodies env)))
@@ -554,6 +567,14 @@
         (hash-keys (car args)))
       (valores-prim ()
         (hash-values (car args)))
+      ;; ---------- STRING PRIMITIVES ----------
+      (longitud-prim ()
+        (string-length (car args)))
+      (concatenar-prim ()
+        (string-append (car args) (cadr args)))
+      (buscar-prim ()
+        ;; string-contains? devuelve booleano, si es verdad pasamos #t
+        (if (string-contains? (car args) (cadr args)) #t #f))
       )))
 
 ;mathflow-display: muestra valores de MathFlow en formato adecuado
@@ -852,3 +873,14 @@
 ;; (scan&parse "$ var d = crear-diccionario(\"nombre\", \"Ana\") print ref-diccionario(d, \"nombre\") end")
 ;; (scan&parse "$ var d = crear-diccionario(\"nombre\", \"Ana\", \"edad\", 34) print claves(d) end")
 ;; (scan&parse "$ var d = crear-diccionario(\"nombre\", \"Ana\", \"edad\", 34) print valores(d) end")
+
+;; ========== Ejemplos Paso 8: Cadenas y Bloques begin-end ==========
+
+;; --- Cadenas ---
+;; (scan&parse "$ print longitud(\"Hola\") end")
+;; (scan&parse "$ print concatenar(\"Hola \", \"Mundo\") end")
+;; (scan&parse "$ print buscar(\"Hola Mundo\", \"Mundo\") end")
+;; (scan&parse "$ print buscar(\"Hola Mundo\", \"Adios\") end")
+
+;; --- Bloques begin ... end ---
+;; (scan&parse "$ var x = 0 if ==(x, 0) then begin print \"Es cero\"; set x = 1 end else print \"No es\" end end")
