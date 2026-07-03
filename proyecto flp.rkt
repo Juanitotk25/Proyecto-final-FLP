@@ -1,7 +1,7 @@
 #lang eopl
 #| Diego Armando Espinosa Ossa 201942206
-#| Juan David Lopez Vanegas 2243077
-#| Juan Manuel Moreno Correa 
+   Juan David Lopez Vanegas 2243077
+   Juan Manuel Moreno Correa 
 |#
 ;******************************************************************************************
 
@@ -112,9 +112,14 @@
                 for-exp)
     (expression ("[" (separated-list expression ",") "]")
                 lista-literal-exp)
-    (expression ("{" (separated-list identifier ":" expression ",") "}")
+    
+    ;; Corrección: uso de no-terminales intermedios para separar con pares
+    (binding (identifier "=" expression) a-binding)
+    (dic-pair (identifier ":" expression) a-dic-pair)
+    
+    (expression ("{" (separated-list dic-pair ",") "}")
                 dicc-literal-exp)
-    (expression ("evaluar" "(" expression "," (separated-list identifier "=" expression ",") ")")
+    (expression ("evaluar" "(" expression "," (separated-list binding ",") ")")
                 evaluar-exp)
     (expression ("simplificar" "(" expression ")")
                 simplificar-exp-sym)
@@ -190,20 +195,15 @@
 ;*******************************************************************************************
 ;Parser, Scanner, Interfaz
 
-
-
 ;El FrontEnd (Análisis léxico (scanner) y sintáctico (parser) integrados)
-
 (define scan&parse
   (sllgen:make-string-parser scanner-spec-simple-interpreter grammar-simple-interpreter))
 
 ;El Analizador Léxico (Scanner)
-
 (define just-scan
   (sllgen:make-string-scanner scanner-spec-simple-interpreter grammar-simple-interpreter))
 
 ;El Interpretador (FrontEnd + Evaluación + señal para lectura )
-
 (define interpretador
   (sllgen:make-rep-loop  "--> "
     (lambda (pgm) (eval-program  pgm)) 
@@ -215,8 +215,6 @@
 ;El Interprete
 
 ;eval-program: <programa> -> numero
-; función que evalúa un programa teniendo en cuenta un ambiente dado (se inicializa dentro del programa)
-
 (define eval-program
   (lambda (pgm)
     (cases program pgm
@@ -224,31 +222,12 @@
                  (main body (init-env))))))
 
 ; Ambiente inicial
-;(define init-env
-;  (lambda ()
-;    (
-;     '(x y z)
-;     '(4 2 5)
-;     (empty-env))))
-
 (define init-env
   (lambda ()
      (empty-env)))
 
-;(define init-env
-;  (lambda ()
-;    (
-;     '(x y z f)
-;     (list 4 2 5 (closure '(y) (primapp-exp (mult-prim) (cons (var-exp 'y) (cons (primapp-exp (decr-prim) (cons (var-exp 'y) ())) ())))
-;                      (empty-env)))
-;     (empty-env))))
-
-;eval-expression: <expression> <enviroment> -> numero
-; evalua la expresión en el ambiente de entrada
-
 ;**************************************************************************************
 ;Definición tipos de datos referencia y blanco
-
 (define-datatype target target?
   (direct-target (expval expval?))
   (indirect-target (ref ref-to-direct-target?)))
@@ -274,7 +253,6 @@
                       ((eqv? lab 'const)
                        (eopl:error 'set
                                    "No se puede modificar constante ~s" id))
-                      
                       (else
                        (let ((ref (apply-env-ref env id))
                              (val (eval-expression rhs env)))
@@ -309,15 +287,15 @@
                        'ok)))
       (for-exp (id iterable body-exp)
                (let ((val (eval-expression iterable env)))
-                 ;; Acepta tanto la lista vacía de Racket como el valor MathFlow `vacio`.
-                 (if (or (list? val) (eq? val 'vacio))
-                     (let loop ((lst val))
-                       (if (null? lst)
-                           'ok
-                           (begin
-                             (eval-expression body-exp (extend-env (list id) (list (car lst)) (list 'var) env))
-                             (loop (cdr lst)))))
-                     (eopl:error 'eval-expression "El iterador de for debe ser una lista, se obtuvo: ~s" val))))
+                 (let ((lst (if (eq? val 'vacio) '() val)))
+                   (if (list? lst)
+                       (let loop ((l lst))
+                         (if (null? l)
+                             'ok
+                             (begin
+                               (eval-expression body-exp (extend-env (list id) (list (direct-target (car l))) (list 'var) env))
+                               (loop (cdr l)))))
+                       (eopl:error 'eval-expression "El iterador de for debe ser una lista, se obtuvo: ~s" val)))))
       (proc-exp (ids body)
                 (closure ids body env))
       (math-app-exp (id rands)
@@ -343,17 +321,25 @@
                              (loop (cdr exps))))))
       (lista-literal-exp (exps)
          (map (lambda (e) (eval-expression e env)) exps))
-      (dicc-literal-exp (ids exps)
-         (let loop ((is ids) (es exps))
-            (if (null? is)
+      
+      ;; Corrección: Procesamiento del nuevo datatype dic-pair
+      (dicc-literal-exp (pairs)
+         (let loop ((ps pairs))
+            (if (null? ps)
                 '()
-                (cons (cons (symbol->string (car is)) (eval-expression (car es) env))
-                      (loop (cdr is) (cdr es))))))
+                (cases dic-pair (car ps)
+                  (a-dic-pair (id e)
+                    (cons (cons (symbol->string id) (eval-expression e env))
+                          (loop (cdr ps))))))))
+                      
       (simplificar-exp-sym (expr)
          (simplificar-exp (eval-expression expr env)))
-      (evaluar-exp (expr ids vals)
+      
+      ;; Corrección: Procesamiento del nuevo datatype binding
+      (evaluar-exp (expr bindings)
          (let ((expr-val (eval-expression expr env))
-               (vals-eval (map (lambda (v) (eval-expression v env)) vals)))
+               (vals-eval (map (lambda (b) (cases binding b (a-binding (id e) (eval-expression e env)))) bindings))
+               (ids (map (lambda (b) (cases binding b (a-binding (id e) id))) bindings)))
             (let loop ((e expr-val) (is ids) (vs vals-eval))
                (if (null? is)
                    (simplificar-exp e)
@@ -375,8 +361,7 @@
       
       (null-exp () 'null-val)
       (bool-oper-exp (expB) (eval-exp-bool expB env))
-      )
-    ))
+      )))
 
 ;eval-exp-bool: <exp-bool> <enviroment> -> boolean
 (define eval-exp-bool
@@ -427,68 +412,56 @@
   (lambda (exp env)
     (cases main-exp exp
       (begin-exp (sen exp exps)
-        (let ((newenv (save-sen sen env)))
-          (let ((env3 (begin
-                        (eval-expression exp newenv)
-                        newenv)))
-
-            (let loop ((es exps)
-                       (env2 env3)
-                       (last-val 'ok))
-              (if (null? es)
-                  last-val
-                  (let ((v (eval-expression (car es) env2)))
-                    (loop (cdr es) env2 v))))))))))
+        (let ((newenv (if (null? sen) env (save-sen sen env))))
+          (let loop ((es (cons exp exps))
+                     (env2 newenv)
+                     (last-val 'ok))
+            (if (null? es)
+                last-val
+                (let ((v (eval-expression (car es) env2)))
+                  (loop (cdr es) env2 v)))))))))
 
 (define save-sen
   (lambda (sen env)
-    (cases sentence (car sen)
+    (if (null? sen) env
+        (cases sentence (car sen)
+          (define-var (id rhs ids rhss)
+            (let ((new-env
+                   (extend-env
+                    (cons id ids)
+                    (eval-def-exp-rands (cons rhs rhss) env)
+                    (make-list-of-n-smthing (length (cons rhs rhss)) 'var)
+                    env)))
+              (if (null? (cdr sen))
+                  new-env
+                  (save-sen (cdr sen) new-env))))
+          (const (id rhs ids rhss)
+            (let ((new-env
+                   (extend-env
+                    (cons id ids)
+                    (eval-def-exp-rands (cons rhs rhss) env)
+                    (make-list-of-n-smthing (length (cons rhs rhss)) 'const)
+                    env)))
+              (if (null? (cdr sen))
+                  new-env
+                  (save-sen (cdr sen) new-env))))
+          (symbol-sentence (id)
+            (let ((new-env (extend-env (list id) (list (direct-target (list 'simbolico id))) (list 'const) env)))
+              (if (null? (cdr sen))
+                  new-env
+                  (save-sen (cdr sen) new-env))))
+          (func-sentence (id ids body-exps ret-exp)
+            (let ((new-env (extend-env-recursively (list id) (list ids) (list (func-body-exp body-exps ret-exp)) env)))
+              (if (null? (cdr sen))
+                  new-env
+                  (save-sen (cdr sen) new-env))))))))
 
-      (define-var (id rhs ids rhss)
-        (let ((new-env
-               (extend-env
-                (cons id ids)
-                (eval-def-exp-rands (cons rhs rhss) env)
-                (make-list-of-n-smthing (length (cons rhs rhss)) 'var)
-                env)))
-          (if (null? (cdr sen))
-              new-env
-              (save-sen (cdr sen) new-env))))
-
-      (const (id rhs ids rhss)
-        (let ((new-env
-               (extend-env
-                (cons id ids)
-                (eval-def-exp-rands (cons rhs rhss) env)
-                (make-list-of-n-smthing (length (cons rhs rhss)) 'const)
-                env)))
-          (if (null? (cdr sen))
-              new-env
-              (save-sen (cdr sen) new-env))))
-              
-      (symbol-sentence (id)
-        (let ((new-env (extend-env (list id) (list (list 'simbolico id)) (list 'const) env)))
-          (if (null? (cdr sen))
-              new-env
-              (save-sen (cdr sen) new-env))))
-      
-      (func-sentence (id ids body-exps ret-exp)
-        (let ((new-env (extend-env-recursively (list id) (list ids) (list (func-body-exp body-exps ret-exp)) env)))
-          (if (null? (cdr sen))
-              new-env
-              (save-sen (cdr sen) new-env))))
-              
-      
-      )))
-
+;; Corrección: caso base corregido para n=0
 (define make-list-of-n-smthing
   (lambda(n smthing)
-    (if (eqv? n 1)
-        (list smthing)
-        (cons smthing (make-list-of-n-smthing  (- n 1)smthing )))
-    )
-  )
-
+    (if (zero? n)
+        '()
+        (cons smthing (make-list-of-n-smthing (- n 1) smthing)))))
 
 ; funciones auxiliares para aplicar eval-expression a cada elemento de una 
 ; lista de operandos (expresiones)
@@ -508,23 +481,21 @@
       (else
        (direct-target (eval-expression rand env))))))
 
+;; Corrección: Se eliminó la definición duplicada/defectuosa de eval-primapp-exp-rands
 (define eval-primapp-exp-rands
   (lambda (rands env)
-    (eval-expression rand env)))
+    (map (lambda (x) (eval-expression x env))
+         rands)))
 
 (define eval-def-exp-rands
   (lambda (rands env)
     (map (lambda (x) (eval-def-exp-rand x env))
          rands)))
 
+;; Corrección: Devuelve direct-target para evitar fallas en deref
 (define eval-def-exp-rand
   (lambda (rand env)
-    (eval-expression rand env)))
-
-(define eval-primapp-exp-rands
-  (lambda (rands env)
-    (map (lambda (x) (eval-expression x env))
-         rands)))
+    (direct-target (eval-expression rand env))))
 
 ;todos-numericos?: verifica si todos los elementos de una lista son numeros
 (define (todos-numericos? lst)
@@ -623,108 +594,101 @@
           (decr-prim () (- (car args) 1))
           ;primitivas de listas
           (vacio-prim () 'vacio)
-      (vacio-pred-prim ()
-        (let ((lst (car args)))
-          (cond
-            ((eq? lst 'vacio) #t)
-            ((null? lst) #t)
-            (else #f))))
-      (crear-lista-prim ()
-        (let ((elem (car args)) (lst (cadr args)))
-          (cons elem (if (eq? lst 'vacio) '() lst))))
-      (lista-pred-prim ()
-        (let ((lst (car args)))
-          (or (list? lst) (eq? lst 'vacio))))
-      (cabeza-prim ()
-        (let ((lst (car args)))
-          (if (eq? lst 'vacio)
-              (eopl:error 'cabeza "Lista vacía")
-              (car (if (null? lst) '() lst)))))
-      (cola-prim ()
-        (let ((lst (car args)))
-          (if (eq? lst 'vacio)
-              (eopl:error 'cola "Lista vacía")
-              (cdr (if (null? lst) '() lst)))))
-      (append-prim ()
-        (let ((lst1 (car args)) (lst2 (cadr args)))
-          (append (if (eq? lst1 'vacio) '() lst1)
-                  (if (eq? lst2 'vacio) '() lst2))))
-      (ref-list-prim ()
-        (let ((lst (car args)) (idx (cadr args)))
-          (if (eq? lst 'vacio)
-              (eopl:error 'ref-list "Lista vacía")
-              (list-ref (if (null? lst) '() lst) idx))))
-      (set-list-prim ()
-        (let ((lst (car args)) (idx (cadr args)) (val (caddr args)))
-          (if (eq? lst 'vacio)
-              (eopl:error 'set-list "Lista vacía")
-              (reemplazar-en-lista (if (null? lst) '() lst) idx val))))
-      ;primitivas de diccionarios (listas de asociacion)
-      (crear-diccionario-prim ()
-        (let loop ((a args))
-          (if (null? a)
-              '()
-              (if (null? (cdr a))
-                  (eopl:error 'crear-diccionario "Falta valor para la llave ~s" (car a))
-                  (cons (cons (car a) (cadr a))
-                        (loop (cddr a)))))))
-      (diccionario-pred-prim ()
-        (es-diccionario? (car args)))
-      (ref-diccionario-prim ()
-        (buscar-en-dict (car args) (cadr args)))
-      (set-diccionario-prim ()
-        (actualizar-dict (car args) (cadr args) (caddr args)))
-      (claves-prim ()
-        (map car (car args)))
-      (valores-prim ()
-        (map cdr (car args)))
-      ;primitivas de cadenas
-      (longitud-prim ()
-        (string-length (car args)))
-      (concatenar-prim ()
-        (string-append (car args) (cadr args)))
-      (buscar-prim ()
-        (buscar-subcadena (car args) (cadr args)))
-      )))
+          (vacio-pred-prim ()
+            (let ((lst (car args)))
+              (cond
+                ((eq? lst 'vacio) #t)
+                ((null? lst) #t)
+                (else #f))))
+          (crear-lista-prim ()
+            (let ((elem (car args)) (lst (cadr args)))
+              (cons elem (if (eq? lst 'vacio) '() lst))))
+          (lista-pred-prim ()
+            (let ((lst (car args)))
+              (or (list? lst) (eq? lst 'vacio))))
+          
+          ;; Corrección: Prevenir (car '()) en listas vacías nativas
+          (cabeza-prim ()
+            (let ((lst (car args)))
+              (if (or (eq? lst 'vacio) (null? lst))
+                  (eopl:error 'cabeza "Lista vacía")
+                  (car lst))))
+          (cola-prim ()
+            (let ((lst (car args)))
+              (if (or (eq? lst 'vacio) (null? lst))
+                  (eopl:error 'cola "Lista vacía")
+                  (let ((res (cdr lst)))
+                    (if (null? res) 'vacio res)))))
+          (append-prim ()
+            (let ((lst1 (car args)) (lst2 (cadr args)))
+              (append (if (eq? lst1 'vacio) '() lst1)
+                      (if (eq? lst2 'vacio) '() lst2))))
+          (ref-list-prim ()
+            (let ((lst (car args)) (idx (cadr args)))
+              (if (eq? lst 'vacio)
+                  (eopl:error 'ref-list "Lista vacía")
+                  (list-ref lst idx))))
+          (set-list-prim ()
+            (let ((lst (car args)) (idx (cadr args)) (val (caddr args)))
+              (if (eq? lst 'vacio)
+                  (eopl:error 'set-list "Lista vacía")
+                  (reemplazar-en-lista lst idx val))))
+          ;primitivas de diccionarios (listas de asociacion)
+          (crear-diccionario-prim ()
+            (let loop ((a args))
+              (if (null? a)
+                  '()
+                  (if (null? (cdr a))
+                      (eopl:error 'crear-diccionario "Falta valor para la llave ~s" (car a))
+                      (cons (cons (car a) (cadr a))
+                            (loop (cddr a)))))))
+          (diccionario-pred-prim ()
+            (es-diccionario? (car args)))
+          (ref-diccionario-prim ()
+            (buscar-en-dict (car args) (cadr args)))
+          (set-diccionario-prim ()
+            (actualizar-dict (car args) (cadr args) (caddr args)))
+          (claves-prim ()
+            (map car (car args)))
+          (valores-prim ()
+            (map cdr (car args)))
+          ;primitivas de cadenas
+          (longitud-prim ()
+            (string-length (car args)))
+          (concatenar-prim ()
+            (string-append (car args) (cadr args)))
+          (buscar-prim ()
+            (buscar-subcadena (car args) (cadr args)))
+          ))))
 
 ;simplificar-exp: recorre recursivamente el arbol
-;y aplica las reglas de simplificacion
 (define (simplificar-exp expr)
   (cond
-    ;; si no es una expresion simbolica, devolver tal cual
     ((not (and (pair? expr) (eq? (car expr) 'simbolico)))
      expr)
-    ;; es simbolica: primero simplificar los hijos recursivamente
     (else
      (let* ((prim (cadr expr))
             (args-raw (cddr expr))
-            ;; simplificamos cada subexpresion primero
             (args (map simplificar-exp args-raw)))
-       ;si todos los argumentos ya son numeros, evaluar la operacion
        (if (todos-numericos? args)
            (apply-primitive prim args)
-           ;si no, intentar simplificar con reglas algebraicas
            (simplificar-reglas prim args))))))
 
 ;simplificar-reglas: aplica identidades algebraicas
 (define (simplificar-reglas prim args)
   (cases primitivaArit prim
-    ;; x + 0 = x, 0 + x = x
     (add-prim ()
       (let ((a (car args)) (b (cadr args)))
         (cond
           ((and (number? b) (zero? b)) a)
           ((and (number? a) (zero? a)) b)
           (else (cons 'simbolico (cons prim args))))))
-    ;; x - 0 = x
     (substract-prim ()
       (let ((a (car args)) (b (cadr args)))
         (cond
           ((and (number? b) (zero? b)) a)
-          ;; x - x = 0 (si son el mismo simbolo)
           ((equal? a b) 0)
           (else (cons 'simbolico (cons prim args))))))
-    ;; x * 0 = 0, 0 * x = 0, x * 1 = x, 1 * x = x
     (mult-prim ()
       (let ((a (car args)) (b (cadr args)))
         (cond
@@ -733,40 +697,43 @@
           ((and (number? b) (= b 1)) a)
           ((and (number? a) (= a 1)) b)
           (else (cons 'simbolico (cons prim args))))))
-    ;; x / 1 = x
     (div-prim ()
       (let ((a (car args)) (b (cadr args)))
         (cond
           ((and (number? b) (= b 1)) a)
-          ;; x / x = 1
           ((equal? a b) 1)
           (else (cons 'simbolico (cons prim args))))))
-    ;; para las demas primitivas no hay regla especial
     (else (cons 'simbolico (cons prim args)))))
 
 ;sustituir-simbolo: reemplaza apariciones de sym por val
-;recorre recursivamente la expresion simbolica
 (define (sustituir-simbolo expr sym val)
   (cond
-    ;; si es el simbolo que buscamos, reemplazar
     ((and (symbol? expr) (eq? expr sym)) val)
-    ;; si es una expresion simbolica compuesta, recorrer hijos
     ((and (pair? expr) (eq? (car expr) 'simbolico))
      (let ((prim (cadr expr))
            (args (cddr expr)))
        (cons 'simbolico
              (cons prim
                    (map (lambda (a) (sustituir-simbolo a sym val)) args)))))
-    ;; cualquier otra cosa se deja igual
     (else expr)))
 
-;mathflow-display: muestra valores de MathFlow en formato adecuado
+;; Corrección: Orden de condicionales corregido para imprimir diccionarios
 (define mathflow-display
   (lambda (val)
     (cond
       ((boolean? val) (display (if val "true" "false")))
       ((eqv? val 'null-val) (display "null"))
       ((eq? val 'vacio) (display "[]"))
+      ((es-diccionario? val)
+       (display "{")
+       (let loop ((pares val))
+  (unless (null? pares)
+    (mathflow-display (caar pares))
+    (display ": ")
+    (mathflow-display (cdar pares))
+    (when (not (null? (cdr pares))) (display ", "))
+    (loop (cdr pares))))
+       (display "}"))
       ((list? val) 
        (display "[") 
        (let loop ((l val))
@@ -775,18 +742,6 @@
            (unless (null? (cdr l)) (display ", "))
            (loop (cdr l))))
        (display "]"))
-      ((es-diccionario? val)
-       (display "{")
-       (let loop ((pares val))
-         (if (null? pares)
-             (void)
-             (begin
-               (mathflow-display (caar pares))
-               (display ": ")
-               (mathflow-display (cdar pares))
-               (if (not (null? (cdr pares))) (display ", ") (void))
-               (loop (cdr pares)))))
-       (display "}"))
       ((symbol? val) (display val))
       ((and (pair? val) (eq? (car val) 'simbolico))
        (display "(")
@@ -801,7 +756,6 @@
       (else (display val)))))
 
 ;true-value?: determina si un valor dado corresponde a un valor booleano falso o verdadero
-; Semantica dinamica: false, 0, "", null son falsos. Todo lo demas es verdadero.
 (define true-value?
   (lambda (x)
     (cond
@@ -827,7 +781,7 @@
                (eval-expression body (extend-env
                                       ids
                                       args
-                                      (make-list-of-n-smthing(length args) 'var)
+                                      (make-list-of-n-smthing (length args) 'var)
                                       env ))))))
 
 ;*******************************************************************************************
@@ -839,12 +793,12 @@
         (eopl:error 'apply-env-label
                     "Variable no definida: ~s"
                     sym))
-
       (extended-env-record (syms vals labels old-env)
         (let ((pos (rib-find-position sym syms)))
           (if (number? pos)
               (list-ref labels pos)
               (apply-env-label old-env sym)))))))
+
 ;definición del tipo de dato ambiente
 (define-datatype environment environment?
   (empty-env-record)
@@ -852,18 +806,16 @@
    (syms (list-of symbol?))
    (vec vector?)
    (label (list-of symbol?))
-   (env environment?)
-   ))
+   (env environment?)))
+
 (define scheme-value? (lambda (v) #t))
+
 ;empty-env:      -> enviroment
-;función que crea un ambiente vacío
 (define empty-env  
   (lambda ()
-    (empty-env-record)))       ;llamado al constructor de ambiente vacío 
-
+    (empty-env-record)))
 
 ;: <list-of symbols> <list-of numbers> enviroment -> enviroment
-;función que crea un ambiente extendido
 (define extend-env
   (lambda (syms vals labs env)
     (extended-env-record
@@ -873,7 +825,6 @@
      env)))
 
 ;-recursively: <list-of symbols> <list-of <list-of symbols>> <list-of expressions> environment -> environment
-;función que crea un ambiente extendido para procedimientos recursivos
 (define extend-env-recursively
   (lambda (proc-names idss bodies old-env)
     (let ((len (length proc-names)))
@@ -886,7 +837,6 @@
           env)))))
 
 ;iota: number -> list
-;función que retorna una lista de los números desde 0 hasta end
 (define iota
   (lambda (end)
     (let loop ((next 0))
@@ -896,11 +846,8 @@
 ;función que busca un símbolo en un ambiente
 (define apply-env
   (lambda (env sym)
-    ;(begin
-     ; (display env)
-      ;(display "jajajaj ")
-      (deref (apply-env-ref env sym))))
-    ;)
+    (deref (apply-env-ref env sym))))
+
 (define apply-env-ref
   (lambda (env sym)
     (cases environment env
@@ -914,10 +861,9 @@
 
 ;*******************************************************************************************
 ;Blancos y Referencias
-
 (define expval?
   (lambda (x)
-    (or (number? x) (procval? x) (boolean? x) (string? x) (eqv? x 'null-val))))
+    (or (number? x) (procval? x) (boolean? x) (string? x) (eqv? x 'null-val) (list? x) (symbol? x) (pair? x))))
 
 (define ref-to-direct-target?
   (lambda (x)
@@ -961,10 +907,6 @@
 
 ;****************************************************************************************
 ;Funciones Auxiliares
-
-; funciones auxiliares para encontrar la posición de un símbolo
-; en la lista de símbolos de un ambiente
-
 (define rib-find-position 
   (lambda (sym los)
     (list-find-position sym los)))
@@ -982,6 +924,7 @@
               (if (number? list-index-r)
                 (+ list-index-r 1)
                 #f))))))
+
 (interpretador)
 ;$ var x = 10 set x = 20; print x end
 ;$ const x = 10 set x = 20; print x end
