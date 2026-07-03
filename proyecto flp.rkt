@@ -1,6 +1,7 @@
 #lang eopl
 #| Diego Armando Espinosa Ossa 201942206
-  Juan David Lopez Vanegas
+#| Juan David Lopez Vanegas 2243077
+#| Juan Manuel Moreno Correa 
 |#
 ;******************************************************************************************
 
