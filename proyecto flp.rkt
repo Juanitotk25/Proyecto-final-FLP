@@ -325,22 +325,14 @@
       
       ;; Corrección: Procesamiento del nuevo datatype dic-pair
       (dicc-literal-exp (pairs)
-         (let loop ((ps pairs))
-            (if (null? ps)
-                '()
-                (cases dic-pair (car ps)
-                  (a-dic-pair (id e)
-                    (cons (cons (symbol->string id) (eval-expression e env))
-                          (loop (cdr ps))))))))
-      
-      (make-dict
-        (let loop ((ps pairs))
-          (if (null? ps)
-            '()
-            (cases dic-pair (car ps)
-              (a-dic-pair (id e)
-                (cons (cons (symbol->string id) (eval-expression e env))
-                  (loop (cdr ps))))))))
+         (make-dict
+           (let loop ((ps pairs))
+              (if (null? ps)
+                  '()
+                  (cases dic-pair (car ps)
+                    (a-dic-pair (id e)
+                      (cons (cons (symbol->string id) (eval-expression e env))
+                            (loop (cdr ps)))))))))
                       
       (simplificar-exp-sym (expr)
          (simplificar-exp (eval-expression expr env)))
@@ -521,25 +513,26 @@
     ((zero? idx) (cons val (cdr lst)))
     (else (cons (car lst) (reemplazar-en-lista (cdr lst) (- idx 1) val)))))
 
-;make-dict: envuelve una lista de pares con una etiqueta explícita para que el 
-;diccionario no se confunda
-(define (make-dict pares) (const 'dict-tag pares))
+;make-dict: envuelve una lista de pares (llave . valor) con una etiqueta explícita
+;para que un diccionario nunca se confunda con una lista normal, ni siquiera si
+;queda anidado dentro de otra lista (ej: crear-lista(dic, ...)).
+(define (make-dict pares) (cons 'dict-tag pares))
 
-;dict-pairs: extrae los valores pares reales de un diccionario etiquetado
-(define (dict-pairs pares) const 'dict-tag pares)
+;dict-pairs: extrae los pares (llave . valor) reales de un diccionario etiquetado
+(define (dict-pairs val) (cdr val))
 
-;es-diccionario?: verifica si un valor es una lista de pares (llave . valor)
+;es-diccionario?: verifica si un valor ES un diccionario (mira la etiqueta, no la forma)
 (define (es-diccionario? val)
   (and (pair? val) (eq? (car val) 'dict-tag)))
 
-;buscar-en-dict: busca una llave en el diccionario
+;buscar-en-dict: busca una llave en el diccionario (recibe la lista de pares, no el dict con tag)
 (define (buscar-en-dict dict llave)
   (cond
     ((null? dict) 'null-val)
     ((equal? (caar dict) llave) (cdar dict))
     (else (buscar-en-dict (cdr dict) llave))))
 
-;actualizar-dict: actualiza o agrega un par llave-valor
+;actualizar-dict: actualiza o agrega un par llave-valor (recibe/devuelve la lista de pares)
 (define (actualizar-dict dict llave valor)
   (cond
     ((null? dict) (list (cons llave valor)))
@@ -621,7 +614,7 @@
           (lista-pred-prim ()
             (let ((lst (car args)))
               (and (not (es-diccionario? lst))
-              (or (list? lst) (eq? lst 'vacio)))))
+                   (or (list? lst) (eq? lst 'vacio)))))
           
           ;; Corrección: Prevenir (car '()) en listas vacías nativas
           (cabeza-prim ()
@@ -654,17 +647,17 @@
             (make-dict
               (let loop ((a args))
                 (if (null? a)
-                  '()
-                  (if (null? (cdr a))
-                    (eopl:error 'crear-diccionario "Falta valor para la llave ~s" (car a))
-                  (cons (cons (car a) (cadr a))
-                  (loop (cddr a))))))))                  
+                    '()
+                    (if (null? (cdr a))
+                        (eopl:error 'crear-diccionario "Falta valor para la llave ~s" (car a))
+                        (cons (cons (car a) (cadr a))
+                              (loop (cddr a))))))))
           (diccionario-pred-prim ()
             (es-diccionario? (car args)))
           (ref-diccionario-prim ()
             (if (es-diccionario? (car args))
-            (buscar-en-dict (dict-pairs (car args)) (cadr args))
-            (eopl:error 'ref-diccionario "El valor no es un diccionario: ~s" (car args))))
+                (buscar-en-dict (dict-pairs (car args)) (cadr args))
+                (eopl:error 'ref-diccionario "El valor no es un diccionario: ~s" (car args))))
           (set-diccionario-prim ()
             (if (es-diccionario? (car args))
                 (make-dict (actualizar-dict (dict-pairs (car args)) (cadr args) (caddr args)))
@@ -1080,46 +1073,3 @@
 ;; CORREGIDO: el binding usa identificador = expresión, sin comilla: evaluar(f, x = 5)
 ;; (scan&parse "$ var f = +('x, 1) print evaluar(f, x = 5) end")
 ;; (scan&parse "$ var f = *(+('x, 2), 'y) print evaluar(f, x = 3) end")
-
-;; *******************************************************************
-;; Pregunta 5
-#|
-$ var a = 20; 
-b = 5; 
-x = 15.5; 
-y = 4.2; 
-xf = 20.0; 
-yf = 5.0
-print +(a, b);
-print -(a, b);
-print *(a, b);
-print /(a, b);
-print %(a, b);
-print add1(a);
-print sub1(a);
-print +(x, y);
-print -(x, y);
-print *(x, y);
-print /(x, y);
-print %(xf, yf);
-print add1(x);
-print sub1(x)
-end
-|#
-
-;; Pregunta 6
-#|
-$
-var x = and (<(3, 5), >(20.9, 21));
-y = or (<=(10, 11), >=(20, 19.99));
-z = not (and (==(20, 20), <>(18, 15)))
-print x;
-print y;
-print z
-end
-|#
-
-;; Pregunta 7
-#|
-
-|#
