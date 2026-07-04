@@ -264,6 +264,7 @@
       (print-exp (arg)
                  (begin
                    (mathflow-display (eval-expression arg env))
+                   (newline)
                    '<--))
       (if-exp (test-exp true-exp false-exp)
               (if (true-value? (eval-expression test-exp env))
