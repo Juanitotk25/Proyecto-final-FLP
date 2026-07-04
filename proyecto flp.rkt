@@ -332,6 +332,15 @@
                   (a-dic-pair (id e)
                     (cons (cons (symbol->string id) (eval-expression e env))
                           (loop (cdr ps))))))))
+      
+      (make-dict
+        (let loop ((ps pairs))
+          (if (null? ps)
+            '()
+            (cases dic-pair (car ps)
+              (a-dic-pair (id e)
+                (cons (cons (symbol->string id) (eval-expression e env))
+                  (loop (cdr ps))))))))
                       
       (simplificar-exp-sym (expr)
          (simplificar-exp (eval-expression expr env)))
@@ -512,11 +521,16 @@
     ((zero? idx) (cons val (cdr lst)))
     (else (cons (car lst) (reemplazar-en-lista (cdr lst) (- idx 1) val)))))
 
+;make-dict: envuelve una lista de pares con una etiqueta explícita para que el 
+;diccionario no se confunda
+(define (make-dict pares) (const 'dict-tag pares))
+
+;dict-pairs: extrae los valores pares reales de un diccionario etiquetado
+(define (dict-pairs pares) const 'dict-tag pares)
+
 ;es-diccionario?: verifica si un valor es una lista de pares (llave . valor)
 (define (es-diccionario? val)
-  (and (list? val)
-       (not (null? val))
-       (pair? (car val))))
+  (and (pair? val) (eq? (car val) 'dict-tag)))
 
 ;buscar-en-dict: busca una llave en el diccionario
 (define (buscar-en-dict dict llave)
@@ -606,7 +620,8 @@
               (cons elem (if (eq? lst 'vacio) '() lst))))
           (lista-pred-prim ()
             (let ((lst (car args)))
-              (or (list? lst) (eq? lst 'vacio))))
+              (and (not (es-diccionario? lst))
+              (or (list? lst) (eq? lst 'vacio)))))
           
           ;; Corrección: Prevenir (car '()) en listas vacías nativas
           (cabeza-prim ()
@@ -636,23 +651,32 @@
                   (reemplazar-en-lista lst idx val))))
           ;primitivas de diccionarios (listas de asociacion)
           (crear-diccionario-prim ()
-            (let loop ((a args))
-              (if (null? a)
+            (make-dict
+              (let loop ((a args))
+                (if (null? a)
                   '()
                   (if (null? (cdr a))
-                      (eopl:error 'crear-diccionario "Falta valor para la llave ~s" (car a))
-                      (cons (cons (car a) (cadr a))
-                            (loop (cddr a)))))))
+                    (eopl:error 'crear-diccionario "Falta valor para la llave ~s" (car a))
+                  (cons (cons (car a) (cadr a))
+                  (loop (cddr a))))))))                  
           (diccionario-pred-prim ()
             (es-diccionario? (car args)))
           (ref-diccionario-prim ()
-            (buscar-en-dict (car args) (cadr args)))
+            (if (es-diccionario? (car args))
+            (buscar-en-dict (dict-pairs (car args)) (cadr args))
+            (eopl:error 'ref-diccionario "El valor no es un diccionario: ~s" (car args))))
           (set-diccionario-prim ()
-            (actualizar-dict (car args) (cadr args) (caddr args)))
+            (if (es-diccionario? (car args))
+                (make-dict (actualizar-dict (dict-pairs (car args)) (cadr args) (caddr args)))
+                (eopl:error 'set-diccionario "El valor no es un diccionario: ~s" (car args))))
           (claves-prim ()
-            (map car (car args)))
+            (if (es-diccionario? (car args))
+                (map car (dict-pairs (car args)))
+                (eopl:error 'claves "El valor no es un diccionario: ~s" (car args))))
           (valores-prim ()
-            (map cdr (car args)))
+            (if (es-diccionario? (car args))
+                (map cdr (dict-pairs (car args)))
+                (eopl:error 'valores "El valor no es un diccionario: ~s" (car args))))
           ;primitivas de cadenas
           (longitud-prim ()
             (string-length (car args)))
@@ -727,7 +751,7 @@
       ((eq? val 'vacio) (display "[]"))
       ((es-diccionario? val)
        (display "{")
-       (let loop ((pares val))
+       (let loop ((pares (dict-pairs val)))
   (unless (null? pares)
     (mathflow-display (caar pares))
     (display ": ")
@@ -1056,3 +1080,46 @@
 ;; CORREGIDO: el binding usa identificador = expresión, sin comilla: evaluar(f, x = 5)
 ;; (scan&parse "$ var f = +('x, 1) print evaluar(f, x = 5) end")
 ;; (scan&parse "$ var f = *(+('x, 2), 'y) print evaluar(f, x = 3) end")
+
+;; *******************************************************************
+;; Pregunta 5
+#|
+$ var a = 20; 
+b = 5; 
+x = 15.5; 
+y = 4.2; 
+xf = 20.0; 
+yf = 5.0
+print +(a, b);
+print -(a, b);
+print *(a, b);
+print /(a, b);
+print %(a, b);
+print add1(a);
+print sub1(a);
+print +(x, y);
+print -(x, y);
+print *(x, y);
+print /(x, y);
+print %(xf, yf);
+print add1(x);
+print sub1(x)
+end
+|#
+
+;; Pregunta 6
+#|
+$
+var x = and (<(3, 5), >(20.9, 21));
+y = or (<=(10, 11), >=(20, 19.99));
+z = not (and (==(20, 20), <>(18, 15)))
+print x;
+print y;
+print z
+end
+|#
+
+;; Pregunta 7
+#|
+
+|#
