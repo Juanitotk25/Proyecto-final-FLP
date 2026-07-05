@@ -716,6 +716,14 @@
         (cond
           ((and (number? b) (zero? b)) a)
           ((and (number? a) (zero? a)) b)
+          ;; Plegado asociativo: (x + c1) + c2 → x + (c1 + c2)
+          ((and (number? b)
+                (pair? a) (eq? (car a) 'simbolico)
+                (= (length a) 4)
+                (cases primitivaArit (cadr a) (add-prim () #t) (else #f))
+                (number? (cadddr a)))
+           (let ((sym-part (caddr a)) (num-part (cadddr a)))
+             (cons 'simbolico (cons prim (list sym-part (+ num-part b))))))
           (else (cons 'simbolico (cons prim args))))))
     (substract-prim ()
       (let ((a (car args)) (b (cadr args)))
@@ -730,6 +738,14 @@
           ((and (number? b) (zero? b)) 0)
           ((and (number? b) (= b 1)) a)
           ((and (number? a) (= a 1)) b)
+          ;; Plegado asociativo: (x * c1) * c2 → x * (c1 * c2)
+          ((and (number? b)
+                (pair? a) (eq? (car a) 'simbolico)
+                (= (length a) 4)
+                (cases primitivaArit (cadr a) (mult-prim () #t) (else #f))
+                (number? (cadddr a)))
+           (let ((sym-part (caddr a)) (num-part (cadddr a)))
+             (cons 'simbolico (cons prim (list sym-part (* num-part b))))))
           (else (cons 'simbolico (cons prim args))))))
     (div-prim ()
       (let ((a (car args)) (b (cadr args)))
@@ -1136,6 +1152,91 @@
 ; end
 ; 
 
+
+;Pregunta 5
+; a) Enteros
+; b) Flotantes
+; 
+; $
+; var
+;   enteros = [
+;     +(10, 5),
+;     -(10, 5),
+;     *(10, 5),
+;     %(10, 3),
+;     /(10, 2),
+;     add1(10),
+;     sub1(10)
+;   ];
+;   
+;   flotantes = [
+;     +(10.5, 5.2),
+;     -(10.5, 5.2),
+;     *(10.5, 5.2),
+;     %(10.5, 3.2),
+;     /(10.5, 2.1),
+;     add1(10.5),
+;     sub1(10.5)
+;   ]
+; 
+; begin
+;   print enteros;
+;   print flotantes
+; end
+; end
+
+
+;Pregunta 6
+;
+; $
+; var
+;   rel_int = [
+;     <(2, 5),
+;     >(10, 4),
+;     <=(3, 3),
+;     >=(8, 7),
+;     ==(5, 5),
+;     <>(4, 9)
+;   ];
+;   
+;   rel_float = [
+;     <(2.5, 5.2),
+;     >(10.1, 4.4),
+;     <=(3.3, 3.3),
+;     >=(8.5, 7.1),
+;     ==(5.5, 5.5),
+;     <>(4.2, 9.9)
+;   ];
+;   
+;   bol_ops = [
+;     and(true, false),
+;     or(true, false),
+;     not(true)
+;   ]
+; 
+; begin
+;   print rel_int;
+;   print rel_float;
+;   print bol_ops
+; end
+; end
+
+
+;Pregunta 7
+;
+; $
+; var
+;   cadenas_ops = [
+;     longitud("Interpretador"),
+;     concatenar("Hola ", "Mundo")
+;   ]
+; 
+; begin
+;   print cadenas_ops
+; end
+; end
+
+
 ;Pregunta 11
 ;Punto a
 ; $ var l = crear-lista(1, crear-lista(2, crear-lista(3, crear-lista(4, crear-lista(5, vacio())))))
@@ -1171,3 +1272,50 @@
 ; done
 ; end
 
+;Pregunta 13
+;Punto 1
+;
+; $
+; symbol b;
+; symbol h;
+; symbol r;
+; var 
+;   area_triangulo = /(*(b, h), 2);
+;   area_circulo = *(3.14159, *(r, r))
+; begin
+;   print area_triangulo;
+;   print area_circulo;
+;   print evaluar(area_triangulo, b = 10);
+;   print evaluar(area_triangulo, h = 5);
+;   print evaluar(area_triangulo, b = 10, h = 5);
+;   print evaluar(area_circulo, r = 4)
+; end
+; end
+
+;Punto 2
+;
+; Ejemplo 1: simplificar(x + 0) => x
+; Ejemplo 2: simplificar(((x * 1) + 0)) => x
+; Ejemplo 3: simplificar(((x + 2) + 3)) => (+ x, 5)
+; Ejemplo 4: simplificar((x * 0) + 10) => 10
+; Ejemplo 5: simplificar((x * 5) * 6) => (* x, 30)
+; Ejemplo 6 (recursivo): simplificar(((x + 0) * 1) + (2 + 3)) => (+ x, 5)
+;
+; $
+; symbol x;
+; var
+;   y = +(+(x, 2), 3);
+;   ex1 = +(x, 0);
+;   ex2 = +(*(x, 1), 0);
+;   ex4 = +(*(x, 0), 10);
+;   ex5 = *(*(x, 5), 6);
+;   ex6 = +(*(+(x, 0), 1), +(2, 3))
+; begin
+;   print simplificar(ex1);
+;   print simplificar(ex2);
+;   print simplificar(y);
+;   print simplificar(ex4);
+;   print simplificar(ex5);
+;   print simplificar(ex6)
+; end
+; end
