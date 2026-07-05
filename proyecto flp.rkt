@@ -1319,3 +1319,56 @@
 ;   print simplificar(ex6)
 ; end
 ; end
+; end
+
+;Pregunta 10
+;Elabore la función "map" en su lenguaje de programación. 
+;La función "map" recibe una lista L y una función unaria F. 
+;"map" debe retornar una lista donde se le ha aplicado la función F a cada elemento de la lista L.
+;La implementación debe hacerse a través de recursión.
+;
+; $
+; func map(L, F) {
+;   return if vacio?(L)
+;          then vacio()
+;          else crear-lista(call F(cabeza(L)), call map(cola(L), F))
+;          end
+; }
+; 
+; func porDos(x) {
+;   return *(x, 2)
+; }
+; 
+; var miLista = [1, 2, 3, 4, 5];
+; 
+; begin
+;   print call map(miLista, porDos)
+; end
+; end
+
+;Pregunta 9
+;Elabore una función que reciba una lista de enteros L y retorne un registro 
+;(o diccionario) con dos claves: "valores" y "factoriales".
+;
+; $
+; func fact(n) {
+;   return if ==(n, 0) then 1 else *(n, call fact(sub1(n))) end
+; }
+; 
+; func mapFact(L) {
+;   return if vacio?(L) 
+;          then vacio() 
+;          else crear-lista(call fact(cabeza(L)), call mapFact(cola(L))) 
+;          end
+; }
+; 
+; func registroFactorial(L) {
+;   return { valores : L, factoriales : call mapFact(L) }
+; }
+; 
+; var listaPrueba = [1, 2, 3, 4, 7, 9];
+; 
+; begin
+;   print call registroFactorial(listaPrueba)
+; end
+; end
