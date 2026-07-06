@@ -1073,3 +1073,43 @@
 ;; CORREGIDO: el binding usa identificador = expresión, sin comilla: evaluar(f, x = 5)
 ;; (scan&parse "$ var f = +('x, 1) print evaluar(f, x = 5) end")
 ;; (scan&parse "$ var f = *(+('x, 2), 'y) print evaluar(f, x = 3) end")
+
+#|
+Pregunta 8
+$
+var X = crear-lista(1, crear-lista(2, crear-lista(3, vacio())));
+    Y = 100;
+    Z = crear-diccionario("nombre", "Juan");
+    W = "hola"
+
+func F1(a){
+    set a = set-list(a, 0, 999)
+    return a
+}
+
+func F2(b){
+    set b = 999
+    return b
+}
+
+func F3(c){
+    set c = set-diccionario(c, "nombre", "Manuel")
+    return c
+}
+
+func F4(d){
+    set d = "adios"
+    return d
+}
+
+print crear-lista(X, crear-lista(Y, crear-lista(Z, crear-lista(W, vacio()))));
+
+call F1(X);
+call F2(+(Y, 0));
+call F3(Z);
+call F4(concatenar(W, ""));
+
+print crear-lista(X, crear-lista(Y, crear-lista(Z, crear-lista(W, vacio()))))
+
+end
+|#
