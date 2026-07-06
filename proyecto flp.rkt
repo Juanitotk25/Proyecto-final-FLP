@@ -597,7 +597,11 @@
           (substract-prim () (- (car args) (cadr args)))
           (mult-prim () (* (car args) (cadr args)))
           (div-prim () (/ (car args) (cadr args)))
-          (mod-prim () (modulo (car args) (cadr args)))
+          (mod-prim ()
+            (let ((a (car args)) (b (cadr args)))
+              (if (and (integer? a) (integer? b))
+                  (modulo a b)
+                  (- a (* b (truncate (/ a b)))))))
           (incr-prim () (+ (car args) 1))
           (decr-prim () (- (car args) 1))
           ;primitivas de listas
@@ -698,6 +702,9 @@
 ;simplificar-exp: recorre recursivamente el arbol
 (define (simplificar-exp expr)
   (cond
+    ;; nodo hoja: variable simbolica sin sustituir, se deja tal cual
+    ((and (pair? expr) (eq? (car expr) 'simbolico) (null? (cddr expr)))
+     expr)
     ((not (and (pair? expr) (eq? (car expr) 'simbolico)))
      expr)
     (else
@@ -759,6 +766,10 @@
 (define (sustituir-simbolo expr sym val)
   (cond
     ((and (symbol? expr) (eq? expr sym)) val)
+    ;; nodo hoja: variable simbolica, p.ej. (simbolico b)
+    ((and (pair? expr) (eq? (car expr) 'simbolico) (null? (cddr expr)))
+     (if (eq? (cadr expr) sym) val expr))
+    ;; nodo de operacion, p.ej. (simbolico mult-prim arg1 arg2)
     ((and (pair? expr) (eq? (car expr) 'simbolico))
      (let ((prim (cadr expr))
            (args (cddr expr)))
@@ -1106,47 +1117,6 @@
 ;; (scan&parse "$ var f = +('x, 1) print evaluar(f, x = 5) end")
 ;; (scan&parse "$ var f = *(+('x, 2), 'y) print evaluar(f, x = 3) end")
 
-<<<<<<< HEAD
-#|
-Pregunta 8
-$
-var X = crear-lista(1, crear-lista(2, crear-lista(3, vacio())));
-    Y = 100;
-    Z = crear-diccionario("nombre", "Juan");
-    W = "hola"
-
-func F1(a){
-    set a = set-list(a, 0, 999)
-    return a
-}
-
-func F2(b){
-    set b = 999
-    return b
-}
-
-func F3(c){
-    set c = set-diccionario(c, "nombre", "Manuel")
-    return c
-}
-
-func F4(d){
-    set d = "adios"
-    return d
-}
-
-print crear-lista(X, crear-lista(Y, crear-lista(Z, crear-lista(W, vacio()))));
-
-call F1(X);
-call F2(+(Y, 0));
-call F3(Z);
-call F4(concatenar(W, ""));
-
-print crear-lista(X, crear-lista(Y, crear-lista(Z, crear-lista(W, vacio()))))
-
-end
-|#
-=======
 ;Pregunta 2
 ; $
 ; var edad = 10;
@@ -1413,4 +1383,3 @@ end
 ;   print call registroFactorial(listaPrueba)
 ; end
 ; end
->>>>>>> 3ded8a7a94191b8ee4e3d2698ecb067cdc7ef196
